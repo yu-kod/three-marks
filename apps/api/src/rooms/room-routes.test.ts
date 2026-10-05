@@ -19,6 +19,7 @@ describe("POST /api/rooms", () => {
         hostId: alice.id,
         members: [{ id: alice.id, name: "Alice" }],
         maxPlayers: 4,
+        seatDraw: null,
       },
     });
   });
@@ -91,6 +92,78 @@ describe("POST /api/rooms/:id/join", () => {
     const { client, roomId } = await roomWithHost();
 
     const res = await client.request("POST", `/api/rooms/${roomId}/join`);
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("席の操作", () => {
+  async function twoPlayers() {
+    const client = testClient();
+    const alice = await client.guest("Alice");
+    const bob = await client.guest("Bob");
+    const { body } = await client.request("POST", "/api/rooms", { token: alice.token });
+    const roomId = body.room.id;
+    await client.request("POST", `/api/rooms/${roomId}/join`, { token: bob.token });
+    return { client, alice, bob, roomId };
+  }
+
+  it("POST /:id/leave で席を離れられる", async () => {
+    const { client, bob, roomId } = await twoPlayers();
+
+    const res = await client.request("POST", `/api/rooms/${roomId}/leave`, { token: bob.token });
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.members).toHaveLength(1);
+  });
+
+  it("PUT /:id/seats でホストが並びを決められる", async () => {
+    const { client, alice, bob, roomId } = await twoPlayers();
+
+    const res = await client.request("PUT", `/api/rooms/${roomId}/seats`, {
+      token: alice.token,
+      body: { order: [bob.id, alice.id] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.members.map((m: { id: string }) => m.id)).toEqual([bob.id, alice.id]);
+  });
+
+  it("PUT /:id/seats はホスト以外なら 403、形がおかしければ 400", async () => {
+    const { client, alice, bob, roomId } = await twoPlayers();
+
+    const notHost = await client.request("PUT", `/api/rooms/${roomId}/seats`, {
+      token: bob.token,
+      body: { order: [bob.id, alice.id] },
+    });
+    const malformed = await client.request("PUT", `/api/rooms/${roomId}/seats`, {
+      token: alice.token,
+      body: { order: "nope" },
+    });
+
+    expect(notHost.status).toBe(403);
+    expect(malformed.status).toBe(400);
+  });
+
+  it("POST /:id/seats/draw でホストがカードを引いて席順を決め、結果が返る", async () => {
+    const { client, alice, roomId } = await twoPlayers();
+
+    const res = await client.request("POST", `/api/rooms/${roomId}/seats/draw`, {
+      token: alice.token,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.room.seatDraw?.[0]).toHaveLength(2);
+  });
+
+  it.each([
+    ["POST", "leave"],
+    ["PUT", "seats"],
+    ["POST", "seats/draw"],
+  ])("%s /:id/%s はゲストでなければ 401", async (method, path) => {
+    const { client, roomId } = await twoPlayers();
+
+    const res = await client.request(method, `/api/rooms/${roomId}/${path}`, { body: {} });
 
     expect(res.status).toBe(401);
   });

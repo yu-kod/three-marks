@@ -1,4 +1,5 @@
 import { ConflictError } from "@app/server-core";
+import type { SeatDraw } from "@three-marks/engine";
 
 export type RoomMember = {
   guestId: string;
@@ -13,8 +14,10 @@ export type RoomRecord = {
   roomId: string;
   /** 作った人 */
   hostId: string;
-  /** 参加した順 */
+  /** 席順（手番の順）。最初は参加した順で、ホストが並べ直すか、カードを引いて決める */
   members: RoomMember[];
+  /** カードを引いて席順を決めたときの結果（解釈メモ12）。参加者や席順が変わったら null に戻す */
+  seatDraw: SeatDraw[][] | null;
   /** UNIX 秒 */
   createdAt: number;
   /** UNIX 秒。過ぎたら無効（DynamoDB の TTL もこの属性で消す） */

@@ -21,4 +21,5 @@ export {
   type PlayerId,
   type ThrowRecord,
 } from "./game.js";
+export { drawSeats, type SeatDraw, type SeatDrawResult } from "./seating.js";
 export { viewFor, type GameView, type PlayerView } from "./view.js";
