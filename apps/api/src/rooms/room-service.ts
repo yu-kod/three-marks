@@ -3,12 +3,13 @@ import type { GuestIdentity } from "@app/identity";
 import { ConflictError, ForbiddenError, NotFoundError, UnprocessableError } from "@app/server-core";
 import { randomInt } from "node:crypto";
 import {
+  chooseAims,
   createGame,
+  currentThrower,
   throwCards as throwInGame,
   createRng as seededRng,
   drawSeats as drawSeatOrder,
   MAX_PLAYERS,
-  MIN_PLAYERS,
   rulesFor,
   type Rng,
   type SeatDraw,
@@ -18,7 +19,7 @@ import {
 } from "@three-marks/engine";
 import { silentNotifier, type RoomNotifier } from "../realtime/notifier.js";
 import { withGameRules } from "./game-errors.js";
-import type { RoomRecord, RoomStore } from "./room-store.js";
+import type { RoomMember, RoomRecord, RoomStore } from "./room-store.js";
 
 /** ルームの有効期間。集まって遊び終わるまでに十分な長さ */
 export const ROOM_TTL_SECONDS = 24 * 60 * 60;
@@ -27,8 +28,8 @@ export const ROOM_TTL_SECONDS = 24 * 60 * 60;
 export type RoomView = {
   id: string;
   hostId: string;
-  /** 参加した順 */
-  members: { id: string; name: string }[];
+  /** 席順。ゲームが始まると、空いた席を埋めた CPU（cpu: true）も入る */
+  members: { id: string; name: string; cpu: boolean }[];
   maxPlayers: number;
   /** カードを引いて席順を決めたときの結果。引いていなければ null */
   seatDraw: SeatDraw[][] | null;
@@ -56,7 +57,7 @@ const generateRoomId = () => randomBytes(9).toString("base64url");
 const toView = (room: RoomRecord): RoomView => ({
   id: room.roomId,
   hostId: room.hostId,
-  members: room.members.map((m) => ({ id: m.guestId, name: m.name })),
+  members: room.members.map((m) => ({ id: m.guestId, name: m.name, cpu: m.cpu === true })),
   maxPlayers: MAX_PLAYERS,
   seatDraw: room.seatDraw,
   status: room.game === null ? "waiting" : room.game.phase === "finished" ? "finished" : "playing",
@@ -67,6 +68,28 @@ function requireGame(room: RoomRecord): GameState {
     throw new NotFoundError("ゲームはまだ始まっていない", "GAME_NOT_STARTED");
   }
   return room.game;
+}
+
+/** 4人に足りない席を CPU で埋める。席順は人の後ろ（解釈メモ13） */
+function withCpus(members: RoomMember[], joinedAt: number): RoomMember[] {
+  const cpus = Array.from({ length: MAX_PLAYERS - members.length }, (_, i) => ({
+    guestId: `cpu-${i + 1}`,
+    name: `CPU ${i + 1}`,
+    joinedAt,
+    cpu: true as const,
+  }));
+  return [...members, ...cpus];
+}
+
+/** 次が CPU なら、人の手番かゲームの終わりまで CPU に投げさせる（CPU は自分に見える情報だけで選ぶ） */
+function playCpuTurns(game: GameState, members: RoomMember[], rng: Rng): GameState {
+  const cpus = new Set(members.filter((m) => m.cpu).map((m) => m.guestId));
+  let state = game;
+  while (state.phase === "throwing" && cpus.has(currentThrower(state))) {
+    const cpu = currentThrower(state);
+    state = throwInGame(state, cpu, chooseAims(viewFor(state, cpu), rng), rng);
+  }
+  return state;
 }
 
 /** 席に関わる変更（参加・退出・席順）はゲームを始める前だけ */
@@ -227,26 +250,23 @@ export function createRoomService({
         return { ...room, members: order.map((id) => byId.get(id)!), seatDraw: rounds };
       }),
 
-    /** ホストがゲームを始める。席順のまま、1番目の席から（解釈メモ11） */
+    /**
+     * ホストがゲームを始める。4人に足りない席は CPU が埋め、席順のまま1番目の席から（解釈メモ11・13）。
+     * 1人でも始められる。
+     */
     startGame: (roomId: string, host: GuestIdentity) =>
       update(roomId, (room) => {
         if (room.hostId !== host.id) {
           throw new ForbiddenError("ゲームを始められるのはホストだけ");
         }
         assertWaiting(room);
-        if (room.members.length < MIN_PLAYERS) {
-          throw new UnprocessableError(
-            `${MIN_PLAYERS}人そろったら始められる`,
-            "NOT_ENOUGH_PLAYERS"
-          );
-        }
-        return {
-          ...room,
-          game: createGame(
-            room.members.map((m) => m.guestId),
-            createRng()
-          ),
-        };
+        const members = withCpus(room.members, nowSeconds());
+        const rng = createRng();
+        const game = createGame(
+          members.map((m) => m.guestId),
+          rng
+        );
+        return { ...room, members, game: playCpuTurns(game, members, rng) };
       }),
 
     /**
@@ -256,10 +276,9 @@ export function createRoomService({
     async throwCards(roomId: string, player: GuestIdentity, aimIds: number[]): Promise<GameView> {
       const room = await updateRecord(roomId, (room) => {
         const game = requireGame(room);
-        return {
-          ...room,
-          game: withGameRules(() => throwInGame(game, player.id, aimIds, createRng())),
-        };
+        const rng = createRng();
+        const thrown = withGameRules(() => throwInGame(game, player.id, aimIds, rng));
+        return { ...room, game: playCpuTurns(thrown, room.members, rng) };
       });
       return viewFor(room.game!, player.id);
     },

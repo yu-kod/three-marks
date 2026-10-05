@@ -17,7 +17,7 @@ describe("POST /api/rooms", () => {
       room: {
         id: expect.stringMatching(/^[A-Za-z0-9_-]{12}$/),
         hostId: alice.id,
-        members: [{ id: alice.id, name: "Alice" }],
+        members: [{ id: alice.id, name: "Alice", cpu: false }],
         maxPlayers: 4,
         seatDraw: null,
         status: "waiting",
@@ -70,8 +70,8 @@ describe("POST /api/rooms/:id/join", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.room.members).toEqual([
-      { id: alice.id, name: "Alice" },
-      { id: bob.id, name: "Bob" },
+      { id: alice.id, name: "Alice", cpu: false },
+      { id: bob.id, name: "Bob", cpu: false },
     ]);
   });
 

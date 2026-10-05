@@ -7,6 +7,8 @@ export type RoomMember = {
   name: string;
   /** UNIX 秒 */
   joinedAt: number;
+  /** ゲームを始めるときに空いた席を埋めた CPU（解釈メモ13）。guestId は cpu-1 など */
+  cpu?: true;
 };
 
 export type RoomRecord = {

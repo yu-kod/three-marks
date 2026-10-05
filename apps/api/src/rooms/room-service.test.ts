@@ -32,7 +32,7 @@ describe("createRoom", () => {
     await expect(service.createRoom(alice)).resolves.toEqual({
       id: "room-1",
       hostId: "g-1",
-      members: [{ id: "g-1", name: "Alice" }],
+      members: [{ id: "g-1", name: "Alice", cpu: false }],
       maxPlayers: 4,
       seatDraw: null,
       status: "waiting",
@@ -92,8 +92,8 @@ describe("join", () => {
 
     await expect(service.join("room-1", bob)).resolves.toMatchObject({
       members: [
-        { id: "g-1", name: "Alice" },
-        { id: "g-2", name: "Bob" },
+        { id: "g-1", name: "Alice", cpu: false },
+        { id: "g-2", name: "Bob", cpu: false },
       ],
     });
   });
@@ -350,8 +350,21 @@ describe("startGame", () => {
 
     expect(room.status).toBe("playing");
     const game = await service.getGame("room-1", alice);
-    expect(game.players.map((p) => p.id)).toEqual(["g-2", "g-1"]);
+    expect(game.players.map((p) => p.id)).toEqual(["g-2", "g-1", "cpu-1", "cpu-2"]);
     expect(game.currentThrower).toBe("g-2");
+  });
+
+  it("4人に足りない席は CPU が埋め、席順は人の後ろ。参加者一覧で CPU だと分かる（解釈メモ13）", async () => {
+    const { service } = await twoPlayers();
+
+    const room = await service.startGame("room-1", alice);
+
+    expect(room.members).toEqual([
+      { id: "g-1", name: "Alice", cpu: false },
+      { id: "g-2", name: "Bob", cpu: false },
+      { id: "cpu-1", name: "CPU 1", cpu: true },
+      { id: "cpu-2", name: "CPU 2", cpu: true },
+    ]);
   });
 
   it("ゲームを始める前のルームは waiting", async () => {
@@ -366,14 +379,13 @@ describe("startGame", () => {
     await expect(service.startGame("room-1", bob)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("1人では始められない（2〜4人）", async () => {
-    const { service } = setup();
+  it("1人でも始められる（残りの3席は CPU）", async () => {
+    const { service } = setup({ createRng: () => seeded(1) });
     await service.createRoom(alice);
 
-    const result = service.startGame("room-1", alice);
+    const room = await service.startGame("room-1", alice);
 
-    await expect(result).rejects.toBeInstanceOf(UnprocessableError);
-    await expect(result).rejects.toMatchObject({ code: "NOT_ENOUGH_PLAYERS" });
+    expect(room.members.filter((m) => m.cpu)).toHaveLength(3);
   });
 
   it("始まったゲームはもう一度始められない", async () => {
@@ -562,5 +574,51 @@ describe("ルームの更新の通知", () => {
     await service.startGame("room-1", bob).catch(() => {});
 
     expect(roomChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("CPU の手番", () => {
+  async function started(humans: (typeof alice)[]) {
+    const ctx = setup({ createRng: () => seeded(5) });
+    await ctx.service.createRoom(humans[0]!);
+    for (const h of humans.slice(1)) await ctx.service.join("room-1", h);
+    await ctx.service.startGame("room-1", humans[0]!);
+    return ctx;
+  }
+
+  const firstThree = async (service: RoomService, who: typeof alice) =>
+    (await service.getGame("room-1", who)).myHand!.slice(0, 3).map((c) => c.id);
+
+  it("人が投げたあと、次が CPU なら人の手番まで続けて進める", async () => {
+    const { service } = await started([alice]);
+
+    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+
+    // 1ラウンド目: Alice → CPU 1〜3。2ラウンド目は CPU 1 から始まり、CPU 1〜3 → Alice の手番
+    expect(view.currentThrower).toBe("g-1");
+    expect(view.round).toBe(2);
+    expect(view.lastRoundThrows.map((t) => t.player)).toEqual(["g-1", "cpu-1", "cpu-2", "cpu-3"]);
+    expect(view.throws.map((t) => t.player)).toEqual(["cpu-1", "cpu-2", "cpu-3"]);
+  });
+
+  it("次が人なら CPU は投げない", async () => {
+    const { service } = await started([alice, bob]);
+
+    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+
+    expect(view.currentThrower).toBe("g-2");
+    expect(view.throws).toHaveLength(1);
+  });
+
+  it("1人と CPU 3人で最後まで遊べる", async () => {
+    const { service } = await started([alice]);
+
+    for (let i = 0; i < 200; i++) {
+      const view = await service.getGame("room-1", alice);
+      if (view.phase === "finished") break;
+      await service.throwCards("room-1", alice, await firstThree(service, alice));
+    }
+
+    await expect(service.getRoom("room-1")).resolves.toMatchObject({ status: "finished" });
   });
 });
