@@ -1,5 +1,5 @@
 import { ConflictError } from "@app/server-core";
-import type { SeatDraw } from "@three-marks/engine";
+import type { GameState, SeatDraw } from "@three-marks/engine";
 
 export type RoomMember = {
   guestId: string;
@@ -18,6 +18,11 @@ export type RoomRecord = {
   members: RoomMember[];
   /** カードを引いて席順を決めたときの結果（解釈メモ12）。参加者や席順が変わったら null に戻す */
   seatDraw: SeatDraw[][] | null;
+  /**
+   * ゲームの完全な状態（山札・全員の手札を含む）。始める前は null。
+   * クライアントへはそのまま返さず、必ず viewFor を通す（CLAUDE.md「裏向き情報を漏らさない」）
+   */
+  game: GameState | null;
   /** UNIX 秒 */
   createdAt: number;
   /** UNIX 秒。過ぎたら無効（DynamoDB の TTL もこの属性で消す） */

@@ -11,18 +11,18 @@ import { emptyMarks, type Marks } from "./marks.js";
 import { createRng, shuffle, type Rng } from "./rng.js";
 import type { Target } from "./targets.js";
 
-/** シャッフルで1枚も動かさず、スタートプレイヤーには最後の席を選ぶ乱数 */
+/** シャッフルで1枚も動かさない（カットは最後の位置を選ぶ）乱数 */
 const noShuffle: Rng = { nextInt: (n) => n - 1 };
 
 const ids = (cards: { id: number }[]) => cards.map((c) => c.id);
 
 describe("createGame（3章 準備・4.1 配る）", () => {
   it("41枚をシャッフルし、スタートプレイヤーから時計回りに1枚ずつ5枚配る", () => {
-    const game = createGame(["a", "b", "c", "d"], noShuffle);
+    const game = createGame(["d", "a", "b", "c"], noShuffle);
 
-    // スタートは d。d → a → b → c の順に1枚ずつ。
+    // 席順は d, a, b, c で、1番目の d がスタート。d → a → b → c の順に1枚ずつ。
     // noShuffle では id の振り直しも並べ替えないので、id は 1000 + 山札の何枚目か
-    expect(game.startIndex).toBe(3);
+    expect(game.startIndex).toBe(0);
     expect(ids(game.hands.d!)).toEqual([1000, 1004, 1008, 1012, 1016]);
     expect(ids(game.hands.a!)).toEqual([1001, 1005, 1009, 1013, 1017]);
     expect(ids(game.hands.c!)).toEqual([1003, 1007, 1011, 1015, 1019]);
@@ -54,8 +54,17 @@ describe("createGame（3章 準備・4.1 配る）", () => {
     expect(ids(a.deck)).not.toEqual([...ids(a.deck)].sort((x, y) => x - y));
   });
 
+  it("席順の1番目が最初のスタートプレイヤー（解釈メモ11。乱数で選ばない）", () => {
+    for (const seed of [1, 2, 3]) {
+      const game = createGame(["a", "b", "c"], createRng(seed));
+
+      expect(game.startIndex).toBe(0);
+      expect(currentThrower(game)).toBe("a");
+    }
+  });
+
   it("全員マーク 0、1ラウンド目、スタートプレイヤーの手番から始まる", () => {
-    const game = createGame(["a", "b", "c", "d"], noShuffle);
+    const game = createGame(["d", "a", "b", "c"], noShuffle);
 
     expect(game).toMatchObject({
       round: 1,
@@ -94,7 +103,7 @@ function cards(...targets: Target[]): Card[] {
 
 /** d がスタートの4人戦を、手札・山札・マークを差し替えて作る */
 function setupTable(overrides: Partial<GameState> = {}): GameState {
-  return { ...createGame(["a", "b", "c", "d"], noShuffle), ...overrides };
+  return { ...createGame(["d", "a", "b", "c"], noShuffle), ...overrides };
 }
 
 describe("throwCards（4.2 投げる）", () => {
@@ -242,10 +251,10 @@ describe("ラウンドの終わり（4.4 回収）", () => {
 
     const next = playRound(start);
 
-    // スタートは左隣の a へ。a から時計回りに配る。
+    // スタートは左隣の a（2番目の席）へ。a から時計回りに配る。
     // id は配り直しで 2000 + 山札の何枚目か（noShuffle）に振り直る。数字はカットした山のまま
     const targets = (cards: Card[]) => cards.map((c) => c.target);
-    expect(next.startIndex).toBe(0);
+    expect(next.startIndex).toBe(1);
     expect(targets(next.hands.a!)).toEqual(targets([0, 4, 8, 12, 16].map((i) => cut[i]!)));
     expect(ids(next.hands.a!)).toEqual([2000, 2004, 2008, 2012, 2016]);
     expect(targets(next.hands.d!)).toEqual(targets([3, 7, 11, 15, 19].map((i) => cut[i]!)));
@@ -342,7 +351,7 @@ describe("勝利（6章）", () => {
 
     const next = playRound({ ...state, deck, hands });
 
-    expect(next.winners).toEqual(["b", "d"]); // 席順
+    expect(next.winners).toEqual(["d", "b"]); // 席順
   });
 
   it("誰も上がっていなければ続く", () => {

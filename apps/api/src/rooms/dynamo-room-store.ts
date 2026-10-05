@@ -13,9 +13,9 @@ export type DynamoRoomStoreOptions = {
  *
  *   | 項目     | PK            | SK   | 属性                                               |
  *   |----------|---------------|------|----------------------------------------------------|
- *   | ルーム   | ROOM#<roomId> | ROOM | hostId, members, seatDraw, createdAt, expiresAt, version |
+ *   | ルーム   | ROOM#<roomId> | ROOM | hostId, members, seatDraw, game, createdAt, expiresAt, version |
  *
- * 参加者は項目の中にリストで持つ（最大4人なので項目のサイズ上限に届かない）。
+ * 参加者とゲームの状態は項目の中に持つ（最大4人・41枚なので項目のサイズ上限 400KB に届かない）。
  * 書き込みは版（version）を条件にした丸ごとの Put で、同時の参加が互いを消さないようにする。
  * expiresAt はテーブルの TTL 属性なので、期限を過ぎた項目は DynamoDB が消す。
  */
@@ -58,6 +58,7 @@ export function createDynamoRoomStore({ client, tableName }: DynamoRoomStoreOpti
         createdAt: Item.createdAt,
         expiresAt: Item.expiresAt,
         seatDraw: Item.seatDraw,
+        game: Item.game,
         version: Item.version,
       };
     },

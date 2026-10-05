@@ -1,5 +1,5 @@
 import { ConflictError, ForbiddenError, NotFoundError, UnprocessableError } from "@app/server-core";
-import type { Rng } from "@three-marks/engine";
+import { createRng as seeded, type Rng } from "@three-marks/engine";
 import { describe, expect, it } from "vitest";
 import {
   createRoomService,
@@ -35,6 +35,7 @@ describe("createRoom", () => {
       members: [{ id: "g-1", name: "Alice" }],
       maxPlayers: 4,
       seatDraw: null,
+      status: "waiting",
     });
   });
 
@@ -269,7 +270,7 @@ describe("drawSeats — カードを引いて席順を決める", () => {
   };
 
   async function threePlayers(seatRng: Rng) {
-    const ctx = setup({ createSeatRng: () => seatRng });
+    const ctx = setup({ createRng: () => seatRng });
     await ctx.service.createRoom(alice);
     await ctx.service.join("room-1", bob);
     await ctx.service.join("room-1", guest("g-3", "Carol"));
@@ -322,7 +323,7 @@ describe("drawSeats — カードを引いて席順を決める", () => {
   });
 
   it("乱数を渡さなければ、毎回違うシードで引く", async () => {
-    const { service } = setup({ createSeatRng: undefined });
+    const { service } = setup({ createRng: undefined });
     await service.createRoom(alice);
     await service.join("room-1", bob);
 
@@ -330,5 +331,195 @@ describe("drawSeats — カードを引いて席順を決める", () => {
 
     expect(room.members.map((m) => m.id).sort()).toEqual(["g-1", "g-2"]);
     expect(room.seatDraw!.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("startGame", () => {
+  async function twoPlayers(overrides: Partial<RoomServiceDeps> = {}) {
+    const ctx = setup({ createRng: () => seeded(1), ...overrides });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    return ctx;
+  }
+
+  it("ホストが始めると、席順のままゲームが始まり、1番目の席から投げる（解釈メモ11）", async () => {
+    const { service } = await twoPlayers();
+    await service.arrangeSeats("room-1", alice, ["g-2", "g-1"]);
+
+    const room = await service.startGame("room-1", alice);
+
+    expect(room.status).toBe("playing");
+    const game = await service.getGame("room-1", alice);
+    expect(game.players.map((p) => p.id)).toEqual(["g-2", "g-1"]);
+    expect(game.currentThrower).toBe("g-2");
+  });
+
+  it("ゲームを始める前のルームは waiting", async () => {
+    const { service } = setup();
+
+    await expect(service.createRoom(alice)).resolves.toMatchObject({ status: "waiting" });
+  });
+
+  it("ホスト以外は始められない", async () => {
+    const { service } = await twoPlayers();
+
+    await expect(service.startGame("room-1", bob)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("1人では始められない（2〜4人）", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+
+    const result = service.startGame("room-1", alice);
+
+    await expect(result).rejects.toBeInstanceOf(UnprocessableError);
+    await expect(result).rejects.toMatchObject({ code: "NOT_ENOUGH_PLAYERS" });
+  });
+
+  it("始まったゲームはもう一度始められない", async () => {
+    const { service } = await twoPlayers();
+    await service.startGame("room-1", alice);
+
+    await expect(service.startGame("room-1", alice)).rejects.toMatchObject({
+      code: "GAME_STARTED",
+    });
+  });
+
+  it("ルームの情報に、ゲームの中身（山札・手札）は含まれない", async () => {
+    const { service } = await twoPlayers();
+
+    const room = await service.startGame("room-1", alice);
+
+    expect(Object.keys(room).sort()).toEqual(
+      ["hostId", "id", "maxPlayers", "members", "seatDraw", "status"].sort()
+    );
+  });
+});
+
+describe("getGame", () => {
+  async function started() {
+    const ctx = setup({ createRng: () => seeded(1) });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.startGame("room-1", alice);
+    return ctx;
+  }
+
+  it("参加者には自分の手札が見え、他人の手札と山札の中身は見えない", async () => {
+    const { service, store } = await started();
+    const full = (await store.find("room-1"))!.game!;
+
+    const view = await service.getGame("room-1", alice);
+
+    expect(view.myHand).toEqual(full.hands["g-1"]);
+    const json = JSON.stringify(view);
+    for (const card of [...full.deck, ...full.hands["g-2"]!]) {
+      expect(json).not.toContain(`"id":${card.id},`);
+    }
+  });
+
+  it("参加していない人とゲストでない人は観戦者として見る（手札なし）", async () => {
+    const { service } = await started();
+
+    await expect(service.getGame("room-1", guest("g-9", "Eve"))).resolves.toMatchObject({
+      myHand: null,
+    });
+    await expect(service.getGame("room-1", null)).resolves.toMatchObject({ myHand: null });
+  });
+
+  it("始まる前は NotFoundError（GAME_NOT_STARTED）", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+
+    await expect(service.getGame("room-1", alice)).rejects.toMatchObject({
+      code: "GAME_NOT_STARTED",
+    });
+  });
+});
+
+describe("ゲームが始まったあとのルーム", () => {
+  async function started() {
+    const ctx = setup({ createRng: () => seeded(1) });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.startGame("room-1", alice);
+    return ctx;
+  }
+
+  it.each([
+    ["新しく参加する", (s: RoomService) => s.join("room-1", guest("g-3", "Carol"))],
+    ["席を離れる", (s: RoomService) => s.leave("room-1", bob)],
+    ["並べ直す", (s: RoomService) => s.arrangeSeats("room-1", alice, ["g-2", "g-1"])],
+    ["カードを引いて決め直す", (s: RoomService) => s.drawSeats("room-1", alice)],
+  ])("%sことはできない（GAME_STARTED）", async (_, change) => {
+    const { service } = await started();
+
+    await expect(change(service)).rejects.toMatchObject({ code: "GAME_STARTED" });
+  });
+
+  it("参加済みの人が招待 URL を開き直す（再接続する）のはできる", async () => {
+    const { service } = await started();
+
+    await expect(service.join("room-1", bob)).resolves.toMatchObject({ status: "playing" });
+  });
+});
+
+describe("throwCards", () => {
+  async function started() {
+    const ctx = setup({ createRng: () => seeded(1) });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.startGame("room-1", alice);
+    return ctx;
+  }
+
+  /** 手札の最初の3枚を狙いに出す */
+  const firstThree = async (service: RoomService, who: typeof alice) =>
+    (await service.getGame("room-1", who)).myHand!.slice(0, 3).map((c) => c.id);
+
+  it("手番の人が手札から3枚出すと、投げた結果が記録され、次の人の手番になる", async () => {
+    const { service } = await started();
+
+    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+
+    expect(view.throws).toHaveLength(1);
+    expect(view.throws[0]!.player).toBe("g-1");
+    expect(view.currentThrower).toBe("g-2");
+    expect(view.myHand).toHaveLength(2);
+  });
+
+  it("ルール上できない投げ（手番でない等）は UnprocessableError（GAME_RULE）で、状態は変わらない", async () => {
+    const { service } = await started();
+
+    const result = service.throwCards("room-1", bob, await firstThree(service, bob));
+
+    await expect(result).rejects.toBeInstanceOf(UnprocessableError);
+    await expect(result).rejects.toMatchObject({ code: "GAME_RULE" });
+    await expect(service.getGame("room-1", alice)).resolves.toMatchObject({ throws: [] });
+  });
+
+  it("始まる前は投げられない（GAME_NOT_STARTED）", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+
+    await expect(service.throwCards("room-1", alice, [1, 2, 3])).rejects.toMatchObject({
+      code: "GAME_NOT_STARTED",
+    });
+  });
+
+  it("投げ続けて誰かが上がったら、ルームは finished になり勝者が見える", async () => {
+    const { service } = await started();
+    const players = { "g-1": alice, "g-2": bob };
+
+    for (let i = 0; i < 500; i++) {
+      const view = await service.getGame("room-1", alice);
+      if (view.phase === "finished") break;
+      const who = players[view.currentThrower as keyof typeof players];
+      await service.throwCards("room-1", who, await firstThree(service, who));
+    }
+
+    await expect(service.getRoom("room-1")).resolves.toMatchObject({ status: "finished" });
+    const view = await service.getGame("room-1", alice);
+    expect(view.winners!.length).toBeGreaterThan(0);
   });
 });
