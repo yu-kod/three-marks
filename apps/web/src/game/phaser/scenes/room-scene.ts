@@ -21,7 +21,10 @@ import {
   type LobbyView,
 } from "@/game/state/lobby";
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
+import { replayFrames, type ReplayFrame } from "@/game/state/replay";
 import { roomModel } from "@/game/state/room-model";
+import type { TableState } from "@/game/state/table-store";
+import type { GameView } from "@three-marks/engine";
 import type { Skin } from "@/game/skin/skin";
 
 type Room = Extract<Screen, { kind: "room" }>;
@@ -65,14 +68,78 @@ export class RoomScene extends BaseScene {
     });
   }
 
+  /** 前に届いたゲームの状態。ここからの差分を1枚ずつ再生する */
+  private lastGame: GameView | null = null;
+  private queue: ReplayFrame[] = [];
+  private playing = false;
+
+  private render() {
+    const state = this.screen.store.getState();
+    if (state.status === "ready" && state.game !== null) {
+      const frames = replayFrames(this.lastGame, state.game);
+      this.lastGame = state.game;
+      if (frames.length > 0) {
+        this.queue.push(...frames);
+        void this.playQueue();
+        return;
+      }
+    }
+    // 再生している間は、再生が終わってから今の状態を描く
+    if (!this.playing) this.draw(state);
+  }
+
+  /** 届いた投げを1枚ずつ再生する。コマごとに待つ時間はスキンの動きの時間から */
+  private async playQueue() {
+    if (this.playing) return;
+    this.playing = true;
+    const { motion } = this.skin;
+    const hold: Record<ReplayFrame["kind"], number> = {
+      flip: motion.flipMs * 1.2,
+      settle: motion.dealMs * 4,
+      round: motion.cutInMs,
+    };
+    while (this.queue.length > 0) {
+      const frame = this.queue.shift()!;
+      const state = this.screen.store.getState() as Extract<TableState, { status: "ready" }>;
+      this.draw({ ...state, game: frame.view });
+      if (frame.kind === "settle") playSound(this, "sfx.seat");
+      if (frame.banner) this.showBanner(frame.banner);
+      await new Promise<void>((resolve) => this.time.delayedCall(hold[frame.kind], resolve));
+    }
+    this.playing = false;
+    this.draw(this.screen.store.getState());
+  }
+
+  /** ラウンドの切り替わりなどを、画面の真ん中に大きく出す */
+  private showBanner(text: string) {
+    const { skin } = this;
+    const band = this.add.rectangle(0, 0, BASE_WIDTH, 96, skin.colors.panel, 0.94);
+    const edge = this.add.rectangle(0, 46, BASE_WIDTH, 3, skin.colors.accent);
+    const label = addText(this, skin, 0, 0, text, { size: 48, font: "display", bold: true });
+    const banner = this.add
+      .container(BASE_WIDTH / 2, BASE_HEIGHT / 2 - 40, [band, edge, label])
+      .setDepth(40);
+    playSound(this, "sfx.start");
+    this.tweens.chain({
+      targets: banner,
+      tweens: [
+        {
+          scaleY: { from: 0, to: 1 },
+          alpha: { from: 0, to: 1 },
+          duration: 220,
+          ease: "Back.easeOut",
+        },
+        { alpha: 0, delay: skin.motion.cutInMs - 520, duration: 300 },
+      ],
+      onComplete: () => banner.destroy(),
+    });
+  }
+
   /** 前に描いた形。同じなら描き直さない */
   private drawn = "";
 
-  private render() {
-    const model = roomModel(
-      this.screen.store.getState(),
-      this.screen.guest.getState().guest?.id ?? null
-    );
+  private draw(state: TableState) {
+    const model = roomModel(state, this.screen.guest.getState().guest?.id ?? null);
     const key = JSON.stringify({ model, selected: this.selected });
     if (key === this.drawn) return;
     this.drawn = key;
@@ -335,7 +402,7 @@ export class RoomScene extends BaseScene {
         view.on("pointerup", () => {
           playSound(this, "sfx.tap");
           this.selected = toggleAim(this.selected, card.id, game.aimCount);
-          this.render();
+          this.draw(this.screen.store.getState());
         });
       }
       this.body.add(view);
