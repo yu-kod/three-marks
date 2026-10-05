@@ -2,7 +2,7 @@
 
 > AWS アカウントの準備（tfstate バケットと GitHub Actions のロール）は [yu-kod/app-template](https://github.com/yu-kod/app-template) の
 > `infra/bootstrap/` で一元管理している。three-marks は `repositories` に登録済みのリポジトリとして、
-> 下の「アプリを足す」の手順でロールを作り、Secrets を登録する。
+> 下の「アプリを足す」の手順でロールを作る（作成済み。Secrets の登録は要らない）。
 > 公開先は `https://three-marks.yu-web.site`（`infra/terraform.tfvars`）。
 
 ## 全体像
@@ -61,10 +61,15 @@ AWS アカウントで1つのバケット `tfstate-<アカウントID>-ap-northe
 
 リポジトリごとに2つ。`infra/bootstrap/` が作る。
 
-| ロール | Secret | 引き受けられるジョブ | 権限 |
-|---|---|---|---|
-| `gha-deploy-<repo>` | `AWS_ROLE_ARN` | production 環境のジョブ（deploy.yml）だけ | AdministratorAccess（apply 用。意図的な妥協） |
-| `gha-plan-<repo>` | `AWS_PLAN_ROLE_ARN` | PR のジョブだけ | ReadOnlyAccess（plan 用） |
+| ロール | 引き受けられるジョブ | 権限 |
+|---|---|---|
+| `gha-deploy-<repo>` | production 環境のジョブ（deploy.yml）だけ | AdministratorAccess（apply 用。意図的な妥協） |
+| `gha-plan-<repo>` | PR のジョブだけ | ReadOnlyAccess（plan 用） |
+
+**Secrets の登録は要らない。** ロールの ARN は `arn:aws:iam::<アカウントID>:role/gha-<deploy|plan>-<リポジトリ名>` と決まっているので、
+ワークフロー（`.github/actions/aws-login`）が `.github/aws-account-id` とリポジトリ名から組み立てる。
+アカウント ID は秘密情報ではない（AWS の見解）ので、リポジトリに書いてよい。
+別のロールを使いたいときだけ、Secrets の `AWS_ROLE_ARN` / `AWS_PLAN_ROLE_ARN` で上書きできる。
 
 PR のジョブは本番を書き換えられない。フォークからの PR には GitHub が OIDC トークンを出さない。
 
@@ -124,21 +129,10 @@ GitHub の OIDC プロバイダーは、既にアカウントにあるものを�
 まだ無いアカウントでは `terraform apply -var create_github_oidc_provider=true` にする。
 有無は `aws iam list-open-id-connect-providers` に `token.actions.githubusercontent.com` があるかで分かる。
 
-### 5. Secrets を登録する
+### 5. アカウント ID をテンプレートに書く
 
-apply の最後に、リポジトリごとの値が出る。
-
-```
-github_secrets = {
-  "three-marks" = {
-    "AWS_PLAN_ROLE_ARN" = "arn:aws:iam::123456789012:role/gha-plan-three-marks"
-    "AWS_ROLE_ARN"      = "arn:aws:iam::123456789012:role/gha-deploy-three-marks"
-  }
-}
-```
-
-各リポジトリの Settings → Secrets and variables → Actions に、`AWS_ROLE_ARN` と `AWS_PLAN_ROLE_ARN` を登録する。
-**登録するのはこの2つだけ。** アクセスキーは登録しない。
+最初の `aws sts get-caller-identity` の `Account`（12桁）を、`yu-kod/app-template` の `.github/aws-account-id` に書いて PR でマージする。
+yu-kod のアカウントでは書き込み済み（`012502956603`）。
 
 ---
 
@@ -147,8 +141,10 @@ github_secrets = {
 1. `yu-kod/app-template` の `infra/bootstrap/variables.tf` の `repositories` にリポジトリ名を足す（PR でマージ）
 2. CloudShell で「AWS アカウントの準備」の 2・4 を再実行する（`git -C ~/app-template pull` してから）。
    増えるのは足したリポジトリのロールだけ
-3. 出力された `AWS_ROLE_ARN` と `AWS_PLAN_ROLE_ARN` をそのリポジトリの Secrets に登録する
-4. main へ push すればデプロイされる。手動で起動するなら Actions タブから Deploy を `workflow_dispatch` で実行する
+3. main へ push すればデプロイされる。手動で起動するなら Actions タブから Deploy を `workflow_dispatch` で実行する
+
+Secrets の登録は要らない（テンプレートからコピーされた `.github/aws-account-id` から ARN を組み立てる）。
+ロールを作る前にデプロイが走ると、ロールの引き受けで失敗する（ログに「repositories に入っているか確認」と出る）。
 
 初回は CloudFront ディストリビューションの作成に 5〜10 分かかる。カスタムドメインなら、ACM 証明書の DNS 検証にさらに数分かかる。
 
@@ -196,8 +192,8 @@ curl -s https://api.github.com/repos/yu-kod/<repo> | grep '"id"'
 
 ### PR に plan のコメントが付かない
 
-`AWS_PLAN_ROLE_ARN` が未登録だと plan ジョブは何もせずに終わる（ジョブの Summary に notice が出る）。
-Dependabot の PR は Secrets を読めないので、いつも飛ばされる。
+テンプレート自身、Dependabot の PR、フォークからの PR では plan ジョブを飛ばす（Dependabot とフォークの PR には OIDC トークンが出ない）。
+`.github/aws-account-id` が空でも飛ばす（ジョブの Summary に notice が出る）。
 
 ### Terraform のロックが残った
 

@@ -1,0 +1,64 @@
+name: AWS login (OIDC)
+description: >
+  このリポジトリ用の GitHub Actions ロールを OIDC で引き受ける。
+  ロールの ARN は .github/aws-account-id とリポジトリ名から組み立てる
+  （arn:aws:iam::<アカウントID>:role/gha-<deploy|plan>-<リポジトリ名>。infra/bootstrap と同じ規則）。
+  Secrets の登録は要らない。
+inputs:
+  role:
+    description: deploy（production 環境のジョブ）か plan（PR のジョブ）
+    required: true
+  role-arn:
+    description: 組み立てた ARN の代わりに使う ARN（Secrets で上書きしたいときだけ）
+    default: ""
+  required:
+    description: true ならアカウント ID が無いときに失敗する。false なら引き受けずに configured=false を返す
+    default: "true"
+  aws-region:
+    description: AWS リージョン
+    default: ap-northeast-1
+outputs:
+  configured:
+    description: ロールを引き受けたか（true / false）
+    value: ${{ steps.arn.outputs.configured }}
+runs:
+  using: composite
+  steps:
+    - id: arn
+      shell: bash
+      env:
+        ROLE: ${{ inputs.role }}
+        ROLE_ARN: ${{ inputs.role-arn }}
+        REQUIRED: ${{ inputs.required }}
+        REPO: ${{ github.event.repository.name }}
+      run: |
+        case "$ROLE" in
+          deploy|plan) ;;
+          *) echo "::error::role は deploy か plan（$ROLE）"; exit 1 ;;
+        esac
+        if [ -z "$ROLE_ARN" ]; then
+          account="$(tr -d '[:space:]' < .github/aws-account-id 2>/dev/null || true)"
+          if [ -n "$account" ]; then
+            ROLE_ARN="arn:aws:iam::${account}:role/gha-${ROLE}-${REPO}"
+          fi
+        fi
+        if [ -z "$ROLE_ARN" ]; then
+          if [ "$REQUIRED" = "true" ]; then
+            echo "::error::.github/aws-account-id が空です。docs/deploy.md の「AWS アカウントの準備」を参照してください。"
+            exit 1
+          fi
+          echo "::notice::.github/aws-account-id が空なので AWS を使う処理を飛ばす（docs/deploy.md）"
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "role: $ROLE_ARN"
+        # 引き受けに失敗したときに、何をすればよいかを出す
+        echo "::notice::ロール ${ROLE_ARN} を引き受けます。失敗したら、yu-kod/app-template の infra/bootstrap/variables.tf の repositories に ${REPO} が入っているか確認してください（docs/deploy.md「アプリを足す」）。"
+        echo "role_arn=$ROLE_ARN" >> "$GITHUB_OUTPUT"
+        echo "configured=true" >> "$GITHUB_OUTPUT"
+
+    - if: steps.arn.outputs.configured == 'true'
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ steps.arn.outputs.role_arn }}
+        aws-region: ${{ inputs.aws-region }}
