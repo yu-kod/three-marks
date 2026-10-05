@@ -47,7 +47,6 @@ packages/       — アプリをまたいで再利用する部品。アプリ固
   identity-client/ — ブラウザ側のゲストセッションと React のフック（見た目は持たない）
 infra/
   modules/      — 再利用する Terraform モジュール（static-site / http-api / app-table）
-  bootstrap/    — tfstate と GitHub Actions の OIDC ロール（初回だけ手で apply）
 docs/           — 仕様書・設計書・デプロイ手順
 ```
 

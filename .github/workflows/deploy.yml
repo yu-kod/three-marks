@@ -19,6 +19,11 @@ jobs:
     # 「Use this template」で作ったリポジトリでは is_template が false になり、ここが動く
     if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
+    # デプロイの履歴と URL を GitHub の Environments に残す。
+    # deploy ロールはこの環境のジョブからしか引き受けられない（infra/bootstrap）
+    environment:
+      name: production
+      url: ${{ steps.tf.outputs.app_url }}
     concurrency:
       # デプロイは同時に走らせない。後から来たものも捨てずに順番に流す
       group: deploy-production
@@ -33,7 +38,7 @@ jobs:
           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
         run: |
           if [ -z "$AWS_ROLE_ARN" ]; then
-            echo "::error::Secrets に AWS_ROLE_ARN が未設定です。docs/deploy.md の「初回だけ必要な作業」に従って infra/bootstrap を apply し、出力された github_actions_role_arn を登録してください。"
+            echo "::error::Secrets に AWS_ROLE_ARN が未設定です。docs/deploy.md の「アプリを足す」に従って、AWS 側でこのリポジトリのロールを作り、出力された AWS_ROLE_ARN を登録してください。"
             exit 1
           fi
 
@@ -43,6 +48,8 @@ jobs:
           cache: npm
 
       - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -57,11 +64,14 @@ jobs:
       - name: Build Lambda
         run: npm run build:lambda
 
+      - name: Terraform init
+        uses: ./.github/actions/terraform-init
+
       - name: Terraform Apply
         working-directory: infra
-        run: |
-          terraform init -input=false
-          terraform apply -auto-approve -input=false
+        env:
+          PROJECT_NAME: ${{ github.event.repository.name }}
+        run: terraform apply -auto-approve -input=false -var "project_name=${PROJECT_NAME}"
 
       - name: Get Terraform outputs
         id: tf
