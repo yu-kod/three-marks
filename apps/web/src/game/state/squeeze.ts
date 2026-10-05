@@ -53,20 +53,26 @@ export function peelProgress(start: Point, current: Point, height: number): numb
 }
 
 /**
- * めくれた札を置き場所に割り当てる。flips はめくれた順（山札の上から）、touched は指が触れた置き場所の順。
- * i 枚目にめくれた札は i 番目に触れた置き場所へ。触れた順より多くめくれていたら（一気にめくった・
- * ほかの画面でめくった）、空いている置き場所に左から入れる。
+ * めくれた札を置き場所に割り当てる。i 枚目にめくれた札（山札の上から順）は、i 番目に触れた置き場所へ。
+ * 触れた順より多くめくれていたら（一気にめくった・ほかの画面でめくった）、空いている置き場所に左から入れる。
+ * 戻り値は、めくれた札ごとの置き場所。
  */
+export function slotOrder(count: number, flipped: number, touched: readonly number[]): number[] {
+  const free = Array.from({ length: count }, (_, i) => i).filter((i) => !touched.includes(i));
+  return Array.from({ length: flipped }, (_, i) =>
+    i < touched.length ? touched[i]! : free.shift()!
+  );
+}
+
+/** 置き場所ごとの、めくれた札（まだなら null） */
 export function slotFaces<T>(
   count: number,
   flips: readonly T[],
   touched: readonly number[]
 ): (T | null)[] {
   const slots: (T | null)[] = Array.from({ length: count }, () => null);
-  const free = Array.from({ length: count }, (_, i) => i).filter((i) => !touched.includes(i));
-  flips.forEach((face, i) => {
-    const slot = i < touched.length ? touched[i]! : free.shift()!;
-    slots[slot] = face;
+  slotOrder(count, flips.length, touched).forEach((slot, i) => {
+    slots[slot] = flips[i]!;
   });
   return slots;
 }

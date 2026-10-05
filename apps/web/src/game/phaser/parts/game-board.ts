@@ -2,7 +2,8 @@ import type * as Phaser from "phaser";
 import { BASE_WIDTH } from "../layout";
 import type { Skin, SlotKey } from "@/game/skin/skin";
 import type { CardFace } from "@/game/state/card-face";
-import type { FlipOutcome, GameModel } from "@/game/state/game-model";
+import { BOARD_ORDER, type FlipOutcome, type GameModel } from "@/game/state/game-model";
+import type { Target } from "@three-marks/engine";
 import { drawCard } from "./card";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
@@ -11,6 +12,16 @@ import { placeVisual } from "./visual";
 const COLUMNS = [42, 118, BASE_WIDTH / 2, 272, 348];
 const PLAYER_COLUMNS = [COLUMNS[0]!, COLUMNS[1]!, COLUMNS[3]!, COLUMNS[4]!];
 const ROW_HEIGHT = 36;
+/** 得点表の上端（基準座標） */
+export const BOARD_TOP = 136;
+
+/** 得点表で、ある人（席順）のある数字のマークが入る場所 */
+export function boardCell(target: Target, seat: number): { x: number; y: number } {
+  return {
+    x: PLAYER_COLUMNS[seat]!,
+    y: BOARD_TOP + BOARD_ORDER.indexOf(target) * ROW_HEIGHT + ROW_HEIGHT / 2,
+  };
+}
 
 const glyphOf = (target: GameModel["rows"][number]["target"]): SlotKey =>
   target === "bull" ? "board.bull" : `board.${target}`;

@@ -6,6 +6,7 @@ import {
   peelProgress,
   REVEAL_AT,
   slotFaces,
+  slotOrder,
   type Slot,
 } from "./squeeze";
 
@@ -104,5 +105,12 @@ describe("latestThrowOf", () => {
       latestThrowOf({ throws: [record("b", 2)], lastRoundThrows: [record("a", 3)] }, "a")
     ).toEqual(record("a", 3));
     expect(latestThrowOf({ throws: [], lastRoundThrows: [] }, "a")).toBeNull();
+  });
+});
+
+describe("slotOrder", () => {
+  it("i 枚目にめくれた札が入る置き場所（触れた順、残りは空いている左から）", () => {
+    expect(slotOrder(5, 5, [3, 0])).toEqual([3, 0, 1, 2, 4]);
+    expect(slotOrder(3, 1, [])).toEqual([0]);
   });
 });

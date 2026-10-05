@@ -4,7 +4,13 @@ import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
 import { drawCard } from "../parts/card";
 import { FlipStage } from "../parts/flip-stage";
-import { drawPlayerPanels, drawScoreboard, drawThrowStrip } from "../parts/game-board";
+import {
+  BOARD_TOP,
+  boardCell,
+  drawPlayerPanels,
+  drawScoreboard,
+  drawThrowStrip,
+} from "../parts/game-board";
 import { drawNameChip } from "../parts/name-editor";
 import { playSeatDrawReveal } from "../parts/seat-draw-reveal";
 import { playSound } from "../parts/sound";
@@ -25,7 +31,6 @@ import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
 import { roomModel } from "@/game/state/room-model";
 import { latestThrowOf } from "@/game/state/squeeze";
-import { cardFaceOf } from "@/game/state/card-face";
 import type { TableState } from "@/game/state/table-store";
 import type { GameView } from "@three-marks/engine";
 import type { Skin } from "@/game/skin/skin";
@@ -104,8 +109,9 @@ export class RoomScene extends BaseScene {
     // めくりの舞台が開いていれば、最後の札まで見せて閉じてから、ほかの人の投げを再生する
     if (this.stage) {
       const game = (this.screen.store.getState() as Extract<TableState, { status: "ready" }>).game!;
-      const mine = latestThrowOf(game, this.me()!);
-      await this.stage.finish(mine ? mine.flips.map((c) => cardFaceOf(c.target)) : []);
+      const me = this.me()!;
+      const seat = game.players.findIndex((p) => p.id === me);
+      await this.stage.finish(latestThrowOf(game, me), (target) => boardCell(target, seat));
       this.stage = null;
     }
     const { motion } = this.skin;
@@ -281,7 +287,7 @@ export class RoomScene extends BaseScene {
     const { skin, screen } = this;
     if (game.myTurn !== "select") this.selected = [];
     this.body.add(drawPlayerPanels(this, skin, game.players, 98));
-    this.body.add(drawScoreboard(this, skin, game.rows, 136));
+    this.body.add(drawScoreboard(this, skin, game.rows, BOARD_TOP));
 
     // めくっている途中ならその投げ、そうでなければ直前の投げ
     if (game.current) {

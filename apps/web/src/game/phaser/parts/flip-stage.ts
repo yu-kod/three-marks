@@ -2,12 +2,15 @@ import * as Phaser from "phaser";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import type { ActionResult } from "@/features/table/room-actions";
 import type { Skin } from "@/game/skin/skin";
-import type { CardFace } from "@/game/state/card-face";
+import { cardFaceOf, type CardFace } from "@/game/state/card-face";
+import { hitPairs } from "@/game/state/hit-pairs";
+import type { Target, ThrowRecord } from "@three-marks/engine";
 import {
   classifyGesture,
   peelProgress,
   REVEAL_AT,
   slotFaces,
+  slotOrder,
   type Point,
   type Slot,
 } from "@/game/state/squeeze";
@@ -40,6 +43,8 @@ type SlotView = {
 export class FlipStage {
   private readonly layer: Phaser.GameObjects.Container;
   private readonly slots: SlotView[] = [];
+  private readonly aimCards: Phaser.GameObjects.Container[] = [];
+  private readonly shade: Phaser.GameObjects.Rectangle;
   private readonly deck: Phaser.GameObjects.Container;
   private deckCount: number;
   private readonly deckLabel: Phaser.GameObjects.Text;
@@ -62,16 +67,18 @@ export class FlipStage {
     }
   ) {
     const { width, height } = skin.card;
-    const shade = scene.add
+    const shade = (this.shade = scene.add
       .rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, skin.colors.background, 0.97)
       .setOrigin(0)
-      .setInteractive();
+      .setInteractive());
     this.layer = scene.add.container(0, 0, [shade]).setDepth(30);
 
     this.layer.add(addText(scene, skin, BASE_WIDTH / 2, 92, "狙い", { size: 13, color: "muted" }));
     opts.aims.forEach((face, i) => {
       const x = BASE_WIDTH / 2 + (i - (opts.aims.length - 1) / 2) * (width + 12);
-      this.layer.add(drawCard(scene, skin, { x, y: 180, face }));
+      const aim = drawCard(scene, skin, { x, y: 180, face });
+      this.aimCards.push(aim);
+      this.layer.add(aim);
     });
 
     // 山札の束。配るたびに薄くなる
@@ -281,11 +288,104 @@ export class FlipStage {
     this.faces = faces;
   }
 
-  /** 全部めくれたら、少し見せてから閉じる */
-  async finish(flips: CardFace[]) {
-    this.update(flips);
+  /**
+   * めくり終えた投げを見せて閉じる。当たった札は狙いに吸い寄せられてくっつき（ヒットストップ・光）、
+   * 外れは暗く落ちる。舞台が薄れて得点表が見えたら、くっついた組が自分のマークの欄へ飛んでいく。
+   */
+  async finish(record: ThrowRecord | null, cellOf: (target: Target) => { x: number; y: number }) {
+    const { scene, skin } = this;
+    const wait = (ms: number) => new Promise<void>((r) => scene.time.delayedCall(ms, r));
+    if (record) this.update(record.flips.map((c) => cardFaceOf(c.target)));
     this.slots.forEach((_, i) => this.reveal(i));
-    await new Promise<void>((r) => this.scene.time.delayedCall(this.skin.motion.cutInMs, r));
+    await wait(skin.motion.flipMs + 400);
+    if (!record) return this.close();
+
+    const order = slotOrder(this.slots.length, record.flips.length, this.touched);
+    const pairs = hitPairs(record);
+    const attached: { group: Phaser.GameObjects.GameObject[]; target: Target }[] = [];
+    for (const pair of pairs) {
+      const card = this.slots[order[pair.flip]!]!.face!;
+      const aim = this.aimCards[pair.aim]!;
+      await new Promise<void>((resolve) =>
+        scene.tweens.add({
+          targets: card,
+          x: aim.x,
+          y: aim.y + 26,
+          scale: aim.scale * 0.92,
+          duration: 260,
+          ease: "Back.easeIn",
+          onComplete: () => resolve(),
+        })
+      );
+      // くっついた瞬間：止まって光る
+      scene.cameras.main.shake(90, 0.006);
+      playSound(scene, "sfx.seat");
+      const flash = scene.add
+        .rectangle(
+          aim.x,
+          aim.y + 12,
+          skin.card.width + 18,
+          skin.card.height + 40,
+          skin.colors.text,
+          0.7
+        )
+        .setDepth(31);
+      scene.tweens.add({
+        targets: flash,
+        alpha: 0,
+        scale: 1.3,
+        duration: 260,
+        onComplete: () => flash.destroy(),
+      });
+      if (pair.kind === "wild") {
+        const label = addText(scene, skin, aim.x, aim.y - 72, "WILD", {
+          size: 18,
+          font: "display",
+          bold: true,
+          color: "accent",
+        });
+        this.layer.add(label);
+        attached.push({ group: [label], target: record.aims[pair.aim]!.target });
+      }
+      attached.push({ group: [card, aim], target: record.aims[pair.aim]!.target });
+      await wait(140);
+    }
+    // 外れは暗く落ちる
+    const hitSlots = new Set(pairs.map((p) => order[p.flip]));
+    this.slots.forEach((view, i) => {
+      if (hitSlots.has(i)) return;
+      scene.tweens.add({
+        targets: [view.face, view.back],
+        alpha: 0.15,
+        y: "+=40",
+        duration: 360,
+        ease: "Cubic.easeIn",
+      });
+    });
+    await wait(pairs.length > 0 ? 450 : 700);
+
+    // 舞台が薄れて得点表が見えたら、組が自分のマークの欄へ飛ぶ
+    scene.tweens.add({ targets: this.shade, alpha: 0.25, duration: 300 });
+    // 飛ばないもの（外れ・当たらなかった狙い・山札・案内）は消す
+    const flying = new Set(attached.flatMap((a) => a.group));
+    const rest = this.layer.list.filter((o) => o !== this.shade && !flying.has(o));
+    scene.tweens.add({ targets: rest, alpha: 0, duration: 260 });
+    await wait(200);
+    attached.forEach(({ group, target }, i) => {
+      const cell = cellOf(target);
+      scene.tweens.add({
+        targets: group,
+        x: cell.x,
+        y: cell.y,
+        scale: 0.25,
+        alpha: 0,
+        delay: i * 110,
+        duration: 520,
+        ease: "Cubic.easeIn",
+        onComplete: () => playSound(scene, "sfx.tap"),
+      });
+    });
+    await wait(attached.length * 110 + 560);
     this.close();
   }
 

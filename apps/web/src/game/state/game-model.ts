@@ -10,7 +10,7 @@ import { cardFaceOf, type CardFace } from "./card-face";
 import type { RoomView } from "./types";
 
 /** 得点表の並び（ダーツのクリケットと同じく 20 が上、BULL が下） */
-const BOARD_ORDER: Target[] = [20, 19, 18, 17, 16, 15, "bull"];
+export const BOARD_ORDER: Target[] = [20, 19, 18, 17, 16, 15, "bull"];
 
 export type FlipOutcome = "hit" | "wild" | "miss";
 

@@ -21,6 +21,7 @@ const gainedBy = (record: ThrowRecord) => [
  * サーバーは CPU の手番を一度に進めるので、何人分もの投げがまとめて届く。届いた投げを順に、
  * 1枚ずつめくって照合するコマに分け、ラウンドが変われば切り替わりを挟む。最後のコマは今の状態そのもの。
  * 前にもう見えていためくり札（人が1枚ずつめくっていた続き）は飛ばす。初めて見るときは再生しない。
+ * 照合のコマでは誰の手番でもない（次の人の手番は最後のコマで決まる）。
  */
 export function replayFrames(prev: GameView | null, next: GameView): ReplayFrame[] {
   if (prev === null) return [];
@@ -68,7 +69,7 @@ export function replayFrames(prev: GameView | null, next: GameView): ReplayFrame
           ...base,
           players: withMarks(base),
           throws: [...thrown],
-          currentThrower: record.player,
+          currentThrower: null,
           pending: null,
         },
       });
