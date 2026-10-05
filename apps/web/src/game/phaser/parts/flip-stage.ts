@@ -17,7 +17,7 @@ import {
   type Slot,
 } from "@/game/state/squeeze";
 import { drawCard } from "./card";
-import { playSound } from "./sound";
+import { feedback } from "./sound";
 import { addText } from "./text";
 import { showToast } from "./toast";
 import { placeVisual } from "./visual";
@@ -156,7 +156,7 @@ export class FlipStage {
         duration: skin.motion.dealMs * 1.6,
         ease: "Cubic.easeOut",
         onStart: () => {
-          playSound(scene, "sfx.tap");
+          feedback(scene, skin, "tap");
           this.deckCount -= 1;
           this.updateDeckLabel();
         },
@@ -260,7 +260,7 @@ export class FlipStage {
     }
     view.revealed = true;
     this.animateProgress(slot, 1, this.skin.motion.flipMs, () => {
-      playSound(this.scene, "sfx.flip");
+      feedback(this.scene, this.skin, "flip");
       this.scene.tweens.add({
         targets: view.face,
         scale: { from: view.face!.scale * 1.12, to: view.face!.scale },
@@ -375,7 +375,7 @@ export class FlipStage {
       // くっついた瞬間：止まって光る
       const impact = this.opts.impact();
       if (impact.shake) scene.cameras.main.shake(90, 0.006);
-      playSound(scene, "sfx.seat");
+      feedback(scene, skin, "hit");
       const flash = scene.add
         .rectangle(
           aim.x,
@@ -408,6 +408,7 @@ export class FlipStage {
     }
     // 外れは暗く落ちる
     const hitSlots = new Set(pairs.map((p) => order[p.flip]));
+    if (hitSlots.size < this.slots.length) feedback(scene, skin, "miss");
     this.slots.forEach((view, i) => {
       if (hitSlots.has(i)) return;
       scene.tweens.add({
@@ -438,7 +439,7 @@ export class FlipStage {
         delay: i * 110,
         duration: 520,
         ease: "Cubic.easeIn",
-        onComplete: () => playSound(scene, "sfx.tap"),
+        onComplete: () => feedback(scene, skin, "tap"),
       });
     });
     await wait(attached.length * 110 + 560);

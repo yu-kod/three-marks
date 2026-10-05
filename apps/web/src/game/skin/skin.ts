@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FEEDBACK_EVENTS } from "@/game/state/feedback";
 
 const color = z.string().regex(/^#[0-9a-f]{6}$/i, "色は #rrggbb で書く");
 
@@ -37,6 +38,8 @@ export const SLOT_KEYS = [
   "mark.3",
   /** 手番の人の印 */
   "icon.turn",
+  /** 設定（演出・音・振動）を開くボタン */
+  "icon.settings",
   /** 得点表の真ん中の数字（暗い得点表の上に置く。カードの数字とは別） */
   "board.15",
   "board.16",
@@ -56,7 +59,21 @@ export const SLOT_KEYS = [
 export type SlotKey = (typeof SLOT_KEYS)[number];
 
 /** 効果音。鳴らす側は名前で鳴らすだけで、音そのものはスキンが決める */
-export const SOUND_KEYS = ["sfx.tap", "sfx.seat", "sfx.flip", "sfx.start"] as const;
+export const SOUND_KEYS = [
+  "sfx.tap",
+  "sfx.seat",
+  "sfx.flip",
+  "sfx.start",
+  "sfx.select",
+  "sfx.throw",
+  "sfx.hit",
+  "sfx.miss",
+  "sfx.open",
+  "sfx.award",
+  "sfx.turn",
+  /** 流しっぱなしの BGM（繰り返す） */
+  "bgm.main",
+] as const;
 export type SoundKey = (typeof SOUND_KEYS)[number];
 
 /**
@@ -125,6 +142,10 @@ const manifestSchema = z.object({
       z.ZodString
     >
   ),
+  /** できごと → 振動の形（Vibration API の pattern）。書いていないできごとは振動しない */
+  vibrations: z
+    .partialRecord(z.enum(FEEDBACK_EVENTS), z.array(z.number().int().nonnegative()).min(1))
+    .default({}),
 });
 
 export type SkinManifest = z.infer<typeof manifestSchema>;

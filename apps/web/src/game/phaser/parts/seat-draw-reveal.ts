@@ -4,7 +4,7 @@ import type { Skin } from "@/game/skin/skin";
 import { cardFaceOf } from "@/game/state/card-face";
 import type { SeatDrawRound } from "@/game/state/seat-draw";
 import { drawCard } from "./card";
-import { playSound } from "./sound";
+import { feedback } from "./sound";
 import { addText } from "./text";
 
 /** めくって見せるときは、手札より大きく出す */
@@ -72,14 +72,14 @@ export async function playSeatDrawReveal(scene: Phaser.Scene, skin: Skin, rounds
     cards.forEach(({ front }) => front.setScale(0, CARD_SCALE));
     await wait(scene, 500);
     for (const { back, front } of cards) {
-      playSound(scene, "sfx.flip");
+      feedback(scene, skin, "flip");
       await flip(scene, skin, back, front);
       scene.tweens.add({ targets: front, y: 392, duration: 120, yoyo: true });
       await wait(scene, 380);
     }
     await wait(scene, 900);
   }
-  playSound(scene, "sfx.seat");
+  feedback(scene, skin, "seat");
   await new Promise<void>((resolve) =>
     scene.tweens.add({
       targets: [shade, layer],

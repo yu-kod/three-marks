@@ -4,7 +4,7 @@ import type { ActionResult } from "@/features/table/room-actions";
 import type { Skin } from "@/game/skin/skin";
 import { drawButton } from "./button";
 import { toCss } from "./color";
-import { playSound } from "./sound";
+import { feedback } from "./sound";
 import { addText } from "./text";
 import { showToast } from "./toast";
 
@@ -29,7 +29,7 @@ export function drawNameChip(
     color: "muted",
   });
   label.setInteractive({ useHandCursor: true }).on(Phaser.Input.Events.POINTER_UP, () => {
-    playSound(scene, "sfx.tap");
+    feedback(scene, skin, "tap");
     openNameEditor(scene, skin, name ?? "", onRename);
   });
   return label;

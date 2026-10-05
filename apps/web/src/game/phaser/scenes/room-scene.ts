@@ -13,8 +13,9 @@ import {
   drawThrowStrip,
 } from "../parts/game-board";
 import { drawNameChip } from "../parts/name-editor";
+import { drawSettingsButton } from "../parts/settings-panel";
 import { playSeatDrawReveal } from "../parts/seat-draw-reveal";
-import { playSound } from "../parts/sound";
+import { feedback, startBgm } from "../parts/sound";
 import { toggleAim, type GameModel } from "@/game/state/game-model";
 import { drawSeat, SEAT_SIZE } from "../parts/seat";
 import { addText } from "../parts/text";
@@ -31,13 +32,12 @@ import {
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
 import { cutInFor } from "@/game/state/cut-in";
+import { settleFeedback } from "@/game/state/feedback";
+import { hitPairs } from "@/game/state/hit-pairs";
 import {
   cutInStyle,
-  EFFECT_LABELS,
   effectPlan,
-  nextEffectLevel,
   playbackSpeed,
-  saveEffectLevel,
   savedEffectLevel,
   type EffectLevel,
 } from "@/game/state/effects";
@@ -72,12 +72,20 @@ export class RoomScene extends BaseScene {
     const { skin, screen } = this;
     this.add.rectangle(0, 0, BASE_WIDTH, HEADER, skin.colors.panel).setOrigin(0);
     placeVisual(this, "logo", skin.slots.logo, { x: 74, y: HEADER / 2, width: 120, height: 48 });
-    this.headline = addText(this, skin, BASE_WIDTH - 92, HEADER / 2, "", {
+    this.headline = addText(this, skin, BASE_WIDTH - 60, HEADER / 2, "", {
       size: 14,
       color: "muted",
       originX: 1,
     });
-    this.drawEffectsChip();
+    drawSettingsButton(this, skin, {
+      x: BASE_WIDTH - 30,
+      y: HEADER / 2,
+      onEffects: (level) => {
+        this.effects = level;
+        this.applySpeed();
+      },
+    });
+    startBgm(this);
     this.body = this.add.container(0, 0);
 
     const render = () => this.render();
@@ -95,25 +103,8 @@ export class RoomScene extends BaseScene {
   /** 前に出したカットイン（同じ演出が続くときは短くする） */
   private lastCutIn: string | null = null;
 
-  /** 見出しの右の「演出」ボタン。押すたびに 強→標準→弱→なし と切り替えて端末に保存する */
-  private drawEffectsChip() {
-    const { skin } = this;
-    const x = BASE_WIDTH - 46;
-    const box = this.add
-      .rectangle(x, HEADER / 2, 72, 30, skin.colors.background, 1)
-      .setStrokeStyle(1, skin.colors.muted)
-      .setInteractive({ useHandCursor: true });
-    const label = addText(this, skin, x, HEADER / 2, "", { size: 12, color: "muted" });
-    const show = () => label.setText(`演出 ${EFFECT_LABELS[this.effects]}`);
-    show();
-    box.on(Phaser.Input.Events.POINTER_UP, () => {
-      this.effects = nextEffectLevel(this.effects);
-      saveEffectLevel(this.effects, createJsonStorage());
-      playSound(this, "sfx.tap");
-      show();
-      this.applySpeed();
-    });
-  }
+  /** 前に描いたときに自分の番だったか（番が回ってきたときだけ知らせる） */
+  private wasMyTurn = false;
 
   /** 演出中にタップしたら、その再生が終わるまで早送り */
   private fastForward = false;
@@ -184,7 +175,10 @@ export class RoomScene extends BaseScene {
       const frame = this.queue.shift()!;
       const state = this.screen.store.getState() as Extract<TableState, { status: "ready" }>;
       this.draw({ ...state, game: frame.view });
-      if (frame.kind === "settle") playSound(this, "sfx.seat");
+      // ほかの人の投げの照合は、当たりがあれば当たり・なければ外れの音（自分の投げは舞台で鳴らした）
+      if (frame.kind === "settle" && frame.record && frame.record.player !== this.me()) {
+        feedback(this, this.skin, settleFeedback(hitPairs(frame.record).length));
+      }
       // 照合した投げにアワードがあれば、カットインを出し終えてから次へ
       if (frame.record) {
         const who = state.room.members.find((m) => m.id === frame.record!.player)?.name ?? "";
@@ -213,7 +207,7 @@ export class RoomScene extends BaseScene {
     const banner = this.add
       .container(BASE_WIDTH / 2, BASE_HEIGHT / 2 - 40, [band, edge, label])
       .setDepth(40);
-    playSound(this, "sfx.start");
+    feedback(this, this.skin, "start");
     this.tweens.chain({
       targets: banner,
       tweens: [
@@ -297,7 +291,7 @@ export class RoomScene extends BaseScene {
           delay: index * 40,
           ease: "Back.easeOut",
         });
-        if (!firstDraw && seat.kind === "player") playSound(this, "sfx.seat");
+        if (!firstDraw && seat.kind === "player") feedback(this, this.skin, "seat");
       }
     });
     this.shownSeats = seatKeys;
@@ -322,7 +316,7 @@ export class RoomScene extends BaseScene {
     const handlers: Record<LobbyAction, () => Promise<{ message: string | null }>> = {
       join: quiet(actions.join),
       leave: quiet(actions.leave),
-      start: quiet(actions.start, () => playSound(this, "sfx.start")),
+      start: quiet(actions.start, () => feedback(this, this.skin, "start")),
       draw: quiet(actions.drawSeats),
       share: () => actions.share(),
     };
@@ -377,7 +371,7 @@ export class RoomScene extends BaseScene {
       );
       this.body.add(strip);
       if (fresh > 0) {
-        playSound(this, "sfx.flip");
+        feedback(this, this.skin, "flip");
         // 新しくめくれた札（狙いの後ろ、矢印の後ろの、めくった札の末尾）を弾ませる
         const cards = strip.list.filter((o) => o instanceof Phaser.GameObjects.Container);
         const flipped = cards.slice(
@@ -416,6 +410,10 @@ export class RoomScene extends BaseScene {
     );
     if (game.hand) this.renderHand(game);
 
+    // 自分の番が回ってきたら知らせる
+    const myTurn = game.myTurn === "select";
+    if (myTurn && !this.wasMyTurn) feedback(this, skin, "turn");
+    this.wasMyTurn = myTurn;
     if (game.result) {
       this.renderResult(game.result);
       return;
@@ -441,6 +439,7 @@ export class RoomScene extends BaseScene {
         y: 760,
         label: "投げる",
         primary: true,
+        sound: ready ? "throw" : "tap",
         onPress: async () => {
           if (this.selected.length !== game.aimCount) {
             showToast(this, skin, `狙いを${game.aimCount}枚選んでください`);
@@ -489,7 +488,7 @@ export class RoomScene extends BaseScene {
       if (game.myTurn === "select") {
         view.setSize(skin.card.width, skin.card.height).setInteractive({ useHandCursor: true });
         view.on("pointerup", () => {
-          playSound(this, "sfx.tap");
+          feedback(this, this.skin, "select");
           this.selected = toggleAim(this.selected, card.id, game.aimCount);
           this.draw(this.screen.store.getState());
         });
@@ -527,6 +526,6 @@ export class RoomScene extends BaseScene {
       duration: 500,
       ease: "Back.easeOut",
     });
-    playSound(this, "sfx.start");
+    feedback(this, this.skin, "start");
   }
 }

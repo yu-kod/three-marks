@@ -3,7 +3,7 @@ import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import type { Skin } from "@/game/skin/skin";
 import type { CutIn } from "@/game/state/cut-in";
 import type { CutInStyle } from "@/game/state/effects";
-import { playSound } from "./sound";
+import { feedback } from "./sound";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
 
@@ -48,7 +48,7 @@ export function playCutIn(
     .setAlpha(0);
   const parts: Phaser.GameObjects.GameObject[] = [shade, banner, label];
 
-  playSound(scene, cut.tier >= 3 ? "sfx.start" : "sfx.seat");
+  feedback(scene, skin, cut.tier >= 3 ? "award" : "open");
   const baseScale = banner.scale;
   scene.tweens.add({ targets: shade, alpha: { from: 0, to: shade.alpha }, duration: 120 });
   scene.tweens.chain({

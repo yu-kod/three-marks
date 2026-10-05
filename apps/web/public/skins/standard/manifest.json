@@ -129,12 +129,32 @@
     },
     "cutin.OPEN": {
       "image": "cutins/OPEN.svg"
+    },
+    "icon.settings": {
+      "image": "icon-settings.svg"
     }
   },
   "sounds": {
     "sfx.tap": "sfx/tap.wav",
     "sfx.seat": "sfx/seat.wav",
     "sfx.flip": "sfx/flip.wav",
-    "sfx.start": "sfx/start.wav"
+    "sfx.start": "sfx/start.wav",
+    "sfx.select": "sfx/select.wav",
+    "sfx.throw": "sfx/throw.wav",
+    "sfx.hit": "sfx/hit.wav",
+    "sfx.miss": "sfx/miss.wav",
+    "sfx.open": "sfx/open.wav",
+    "sfx.award": "sfx/award.wav",
+    "sfx.turn": "sfx/turn.wav",
+    "bgm.main": "sfx/bgm.mp3"
+  },
+  "vibrations": {
+    "select": [8],
+    "throw": [15],
+    "hit": [35],
+    "miss": [10],
+    "open": [20, 40, 20],
+    "award": [40, 60, 80],
+    "turn": [15, 60, 15]
   }
 }

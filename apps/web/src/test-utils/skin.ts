@@ -28,6 +28,7 @@ export function buildManifest(overrides: Overrides = {}): SkinManifest {
     sounds: Object.fromEntries(
       SOUND_KEYS.map((key) => [key, `${key}.wav`])
     ) as SkinManifest["sounds"],
+    vibrations: {},
   };
   return {
     ...base,

@@ -40,7 +40,15 @@ describe.each(SKIN_IDS)("同梱のスキン %s", (id) => {
 });
 
 describe.each(SKIN_IDS)("同梱のスキン %s の音", (id) => {
-  it("効果音のファイルがある", () => {
+  it("当たり・アワード・手番が回るときは振動する", () => {
+    const { vibrations } = load(id);
+
+    for (const event of ["hit", "award", "turn"] as const) {
+      expect(vibrations[event], event).toBeDefined();
+    }
+  });
+
+  it("効果音と BGM のファイルがある", () => {
     const { sounds } = load(id).assets;
 
     for (const key of SOUND_KEYS) {
