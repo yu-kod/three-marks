@@ -1,4 +1,4 @@
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
 import { TABLE_NAME_ENV } from "./deps.js";
@@ -37,6 +37,35 @@ describe("環境変数からの依存の組み立て", () => {
     const command = send.mock.calls[0]![0] as PutCommand;
     expect(command).toBeInstanceOf(PutCommand);
     expect(command.input.TableName).toBe("three-marks-app");
+  });
+
+  it("テーブル名があればルームも同じテーブルに保存する", async () => {
+    vi.stubEnv(TABLE_NAME_ENV, "three-marks-app");
+    send.mockResolvedValue({});
+    const app = createApp();
+    // 登録はモックの DynamoDB に Put されるだけなので、認証のための Get で同じゲストを返す
+    send.mockImplementation(async (command: { input: { Key?: { PK: string } } }) =>
+      command instanceof GetCommand
+        ? {
+            Item: {
+              PK: command.input.Key!.PK,
+              guestId: "g-1",
+              name: "Alice",
+              createdAt: 0,
+              expiresAt: Number.MAX_SAFE_INTEGER,
+            },
+          }
+        : {}
+    );
+
+    const res = await app.request("/api/rooms", {
+      method: "POST",
+      headers: { Authorization: "Bearer token" },
+    });
+
+    expect(res.status).toBe(201);
+    const put = send.mock.calls.map(([c]) => c).find((c) => c instanceof PutCommand) as PutCommand;
+    expect(put.input).toMatchObject({ TableName: "three-marks-app", Item: { SK: "ROOM" } });
   });
 
   it("テーブル名が無ければインメモリで動き、DynamoDB には触れない", async () => {

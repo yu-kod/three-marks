@@ -6,19 +6,25 @@
  */
 import { createDynamoGuestStore, createInMemoryGuestStore, type GuestStore } from "@app/identity";
 import { createDocumentClient } from "@app/server-core";
+import { createDynamoRoomStore } from "./rooms/dynamo-room-store.js";
+import { createInMemoryRoomStore, type RoomStore } from "./rooms/room-store.js";
 
 /** Terraform が Lambda へ渡す（infra/app.tf） */
 export const TABLE_NAME_ENV = "APP_TABLE_NAME";
 
 export type AppDeps = {
   guestStore: GuestStore;
+  roomStore: RoomStore;
 };
 
 export function createDepsFromEnv(env: Record<string, string | undefined> = process.env): AppDeps {
   const tableName = env[TABLE_NAME_ENV];
   if (!tableName) {
-    return { guestStore: createInMemoryGuestStore() };
+    return { guestStore: createInMemoryGuestStore(), roomStore: createInMemoryRoomStore() };
   }
   const client = createDocumentClient();
-  return { guestStore: createDynamoGuestStore({ client, tableName }) };
+  return {
+    guestStore: createDynamoGuestStore({ client, tableName }),
+    roomStore: createDynamoRoomStore({ client, tableName }),
+  };
 }
