@@ -3,6 +3,7 @@ import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
 import { drawCard } from "../parts/card";
+import { FlipStage } from "../parts/flip-stage";
 import { drawPlayerPanels, drawScoreboard, drawThrowStrip } from "../parts/game-board";
 import { drawNameChip } from "../parts/name-editor";
 import { playSeatDrawReveal } from "../parts/seat-draw-reveal";
@@ -23,6 +24,8 @@ import {
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
 import { roomModel } from "@/game/state/room-model";
+import { latestThrowOf } from "@/game/state/squeeze";
+import { cardFaceOf } from "@/game/state/card-face";
 import type { TableState } from "@/game/state/table-store";
 import type { GameView } from "@three-marks/engine";
 import type { Skin } from "@/game/skin/skin";
@@ -79,7 +82,13 @@ export class RoomScene extends BaseScene {
       const frames = replayFrames(this.lastGame, state.game);
       this.lastGame = state.game;
       if (frames.length > 0) {
-        this.queue.push(...frames);
+        // 自分の投げは、めくりの舞台でもう見せている（1枚ずつの再生は飛ばす）
+        const me = this.me();
+        this.queue.push(
+          ...frames.filter(
+            (f) => !(this.stage && f.kind === "flip" && f.view.pending?.player === me)
+          )
+        );
         void this.playQueue();
         return;
       }
@@ -92,6 +101,13 @@ export class RoomScene extends BaseScene {
   private async playQueue() {
     if (this.playing) return;
     this.playing = true;
+    // めくりの舞台が開いていれば、最後の札まで見せて閉じてから、ほかの人の投げを再生する
+    if (this.stage) {
+      const game = (this.screen.store.getState() as Extract<TableState, { status: "ready" }>).game!;
+      const mine = latestThrowOf(game, this.me()!);
+      await this.stage.finish(mine ? mine.flips.map((c) => cardFaceOf(c.target)) : []);
+      this.stage = null;
+    }
     const { motion } = this.skin;
     const hold: Record<ReplayFrame["kind"], number> = {
       flip: motion.flipMs * 1.2,
@@ -249,6 +265,13 @@ export class RoomScene extends BaseScene {
     });
   }
 
+  /** 自分の投げのめくりの舞台（めくっている間だけ） */
+  private stage: FlipStage | null = null;
+
+  private me() {
+    return this.screen.guest.getState().guest?.id ?? null;
+  }
+
   /** 狙いに選んでいる手札（自分の手番で選んでいる間だけ） */
   private selected: number[] = [];
   /** 前に描いた、めくっている途中の札の枚数。新しくめくれた札だけをめくる動きで出す */
@@ -351,28 +374,15 @@ export class RoomScene extends BaseScene {
       });
       this.body.add(throwButton.setAlpha(ready ? 1 : 0.5));
     } else if (game.myTurn === "flip") {
-      const flip = (count: number | "all") => async () => {
-        const result = await screen.actions.flip(count);
-        if (!result.ok) showToast(this, skin, result.message);
-      };
-      this.body.add(
-        drawButton(this, skin, {
-          x: BASE_WIDTH / 2,
-          y: 728,
-          label: "1枚めくる",
-          primary: true,
-          onPress: flip(1),
-        })
-      );
-      this.body.add(
-        drawButton(this, skin, {
-          x: BASE_WIDTH / 2,
-          y: 792,
-          label: "全部めくる",
-          primary: false,
-          onPress: flip("all"),
-        })
-      );
+      // 自分の投げは、画面いっぱいのめくりの舞台でめくる
+      const current = game.current!;
+      this.stage ??= new FlipStage(this, skin, {
+        aims: current.aims,
+        count: current.flips.length + current.flipsLeft,
+        deckCount: game.deckCount,
+        flip: (count) => screen.actions.flip(count),
+      });
+      this.stage.update(current.flips);
     } else {
       const turn = game.players.find((p) => p.turn);
       this.body.add(
