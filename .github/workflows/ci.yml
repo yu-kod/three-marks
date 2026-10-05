@@ -155,7 +155,7 @@ jobs:
 
       - name: Comment plan on PR
         if: steps.setup.outputs.enabled == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require("fs");
