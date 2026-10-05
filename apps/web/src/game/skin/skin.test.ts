@@ -78,6 +78,17 @@ describe("parseSkin", () => {
       "badge.host",
       "toast",
       "icon.up",
+      "mark.1",
+      "mark.2",
+      "mark.3",
+      "icon.turn",
+      "board.15",
+      "board.16",
+      "board.17",
+      "board.18",
+      "board.19",
+      "board.20",
+      "board.bull",
     ]);
   });
 });

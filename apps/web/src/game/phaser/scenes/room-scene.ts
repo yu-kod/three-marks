@@ -3,10 +3,11 @@ import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
 import { drawCard } from "../parts/card";
+import { drawPlayerPanels, drawScoreboard, drawThrowStrip } from "../parts/game-board";
 import { drawNameChip } from "../parts/name-editor";
 import { playSeatDrawReveal } from "../parts/seat-draw-reveal";
 import { playSound } from "../parts/sound";
-import type { CardFace } from "@/game/state/card-face";
+import { toggleAim, type GameModel } from "@/game/state/game-model";
 import { drawSeat, SEAT_SIZE } from "../parts/seat";
 import { addText } from "../parts/text";
 import { showToast } from "../parts/toast";
@@ -72,7 +73,7 @@ export class RoomScene extends BaseScene {
       this.screen.store.getState(),
       this.screen.guest.getState().guest?.id ?? null
     );
-    const key = JSON.stringify(model);
+    const key = JSON.stringify({ model, selected: this.selected });
     if (key === this.drawn) return;
     this.drawn = key;
     this.headline.setText(model.headline);
@@ -81,8 +82,8 @@ export class RoomScene extends BaseScene {
       this.body.add(
         addText(this, this.skin, BASE_WIDTH / 2, BASE_HEIGHT / 2, model.headline, { size: 18 })
       );
-    } else if (model.kind === "playing") {
-      this.renderPlayingPlaceholder();
+    } else if (model.kind === "game") {
+      this.renderGame(model.game);
     } else if (model.kind === "lobby") {
       this.renderLobby(model.view, model.buttons);
       this.revealSeatDraw(model.seatDraw);
@@ -181,29 +182,195 @@ export class RoomScene extends BaseScene {
     });
   }
 
-  /** ゲーム中の画面は #39 で作る。いまは手札の見本だけ */
-  private renderPlayingPlaceholder() {
-    const { skin } = this;
-    const hand: CardFace[] = [
-      { kind: "number", value: 20 },
-      { kind: "number", value: 18 },
-      { kind: "number", value: 18 },
-      { kind: "bull" },
-      { kind: "number", value: 16 },
-    ];
-    const step = skin.card.width + 8;
-    const left = BASE_WIDTH / 2 - (step * (hand.length - 1)) / 2;
-    hand.forEach((face, i) =>
-      this.body.add(
-        drawCard(this, skin, {
-          x: left + step * i,
-          y: BASE_HEIGHT - 40 - skin.card.height / 2,
-          face,
-        })
-      )
-    );
+  /** 狙いに選んでいる手札（自分の手番で選んでいる間だけ） */
+  private selected: number[] = [];
+  /** 前に描いた、めくっている途中の札の枚数。新しくめくれた札だけをめくる動きで出す */
+  private shownFlips = 0;
+
+  private renderGame(game: GameModel) {
+    const { skin, screen } = this;
+    if (game.myTurn !== "select") this.selected = [];
+    this.body.add(drawPlayerPanels(this, skin, game.players, 98));
+    this.body.add(drawScoreboard(this, skin, game.rows, 136));
+
+    // めくっている途中ならその投げ、そうでなければ直前の投げ
+    if (game.current) {
+      const fresh = game.current.flips.length - this.shownFlips;
+      const strip = drawThrowStrip(
+        this,
+        skin,
+        {
+          title: `${game.current.name} がめくっています`,
+          aims: game.current.aims,
+          flips: game.current.flips.map((face) => ({ face, outcome: null })),
+          flipsLeft: game.current.flipsLeft,
+        },
+        470
+      );
+      this.body.add(strip);
+      if (fresh > 0) {
+        playSound(this, "sfx.flip");
+        // 新しくめくれた札（狙いの後ろ、矢印の後ろの、めくった札の末尾）を弾ませる
+        const cards = strip.list.filter((o) => o instanceof Phaser.GameObjects.Container);
+        const flipped = cards.slice(
+          game.current.aims.length,
+          game.current.aims.length + game.current.flips.length
+        );
+        flipped.slice(-fresh).forEach((card, i) =>
+          this.tweens.add({
+            targets: card,
+            scaleX: { from: 0, to: (card as Phaser.GameObjects.Container).scaleX },
+            duration: skin.motion.flipMs,
+            delay: i * skin.motion.flipMs,
+            ease: "Back.easeOut",
+          })
+        );
+      }
+      this.shownFlips = game.current.flips.length;
+    } else {
+      this.shownFlips = 0;
+      if (game.lastThrow) {
+        this.body.add(
+          drawThrowStrip(
+            this,
+            skin,
+            { title: `${game.lastThrow.name} の投げ`, ...game.lastThrow },
+            470
+          )
+        );
+      }
+    }
+
+    // 山札と手札
+    this.body.add(drawCard(this, skin, { x: 30, y: 610, face: { kind: "back" } }).setScale(0.5));
     this.body.add(
-      drawCard(this, skin, { x: BASE_WIDTH / 2, y: BASE_HEIGHT / 2, face: { kind: "back" } })
+      addText(this, skin, 30, 652, `山札 ${game.deckCount}`, { size: 11, color: "muted" })
     );
+    if (game.hand) this.renderHand(game);
+
+    if (game.result) {
+      this.renderResult(game.result);
+      return;
+    }
+    if (game.myTurn === "select") {
+      const ready = this.selected.length === game.aimCount;
+      this.body.add(
+        addText(
+          this,
+          skin,
+          BASE_WIDTH - 16,
+          540,
+          `狙い ${this.selected.length} / ${game.aimCount}`,
+          {
+            size: 13,
+            color: ready ? "text" : "muted",
+            originX: 1,
+          }
+        )
+      );
+      const throwButton = drawButton(this, skin, {
+        x: BASE_WIDTH / 2,
+        y: 760,
+        label: "投げる",
+        primary: true,
+        onPress: async () => {
+          if (this.selected.length !== game.aimCount) {
+            showToast(this, skin, `狙いを${game.aimCount}枚選んでください`);
+            return;
+          }
+          const result = await screen.actions.declare(this.selected);
+          if (!result.ok) showToast(this, skin, result.message);
+        },
+      });
+      this.body.add(throwButton.setAlpha(ready ? 1 : 0.5));
+    } else if (game.myTurn === "flip") {
+      const flip = (count: number | "all") => async () => {
+        const result = await screen.actions.flip(count);
+        if (!result.ok) showToast(this, skin, result.message);
+      };
+      this.body.add(
+        drawButton(this, skin, {
+          x: BASE_WIDTH / 2,
+          y: 728,
+          label: "1枚めくる",
+          primary: true,
+          onPress: flip(1),
+        })
+      );
+      this.body.add(
+        drawButton(this, skin, {
+          x: BASE_WIDTH / 2,
+          y: 792,
+          label: "全部めくる",
+          primary: false,
+          onPress: flip("all"),
+        })
+      );
+    } else {
+      const turn = game.players.find((p) => p.turn);
+      this.body.add(
+        addText(this, skin, BASE_WIDTH / 2, 770, turn ? `${turn.name} の番です` : "", {
+          size: 15,
+          color: "muted",
+        })
+      );
+    }
+  }
+
+  /** 手札。自分の手番なら押して狙いを選ぶ（選んだ札は持ち上がる） */
+  private renderHand(game: GameModel) {
+    const { skin } = this;
+    const hand = game.hand!;
+    const step = skin.card.width + 8;
+    const left = BASE_WIDTH / 2 + 20 - (step * (hand.length - 1)) / 2;
+    hand.forEach((card, i) => {
+      const picked = this.selected.includes(card.id);
+      const view = drawCard(this, skin, {
+        x: left + step * i,
+        y: picked ? 596 : 610,
+        face: card.face,
+      });
+      if (game.myTurn === "select") {
+        view.setSize(skin.card.width, skin.card.height).setInteractive({ useHandCursor: true });
+        view.on("pointerup", () => {
+          playSound(this, "sfx.tap");
+          this.selected = toggleAim(this.selected, card.id, game.aimCount);
+          this.render();
+        });
+      }
+      this.body.add(view);
+    });
+  }
+
+  /** 終わったときの結果 */
+  private renderResult(result: NonNullable<GameModel["result"]>) {
+    const { skin } = this;
+    const shade = this.add
+      .rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, skin.colors.panel, 0.88)
+      .setOrigin(0)
+      .setInteractive();
+    const title = addText(this, skin, BASE_WIDTH / 2, 300, result.iWon ? "YOU WIN!" : "GAME OVER", {
+      size: 40,
+      font: "display",
+      bold: true,
+    });
+    const names = addText(this, skin, BASE_WIDTH / 2, 360, `勝者：${result.winners.join("・")}`, {
+      size: 18,
+    });
+    const home = drawButton(this, skin, {
+      x: BASE_WIDTH / 2,
+      y: 760,
+      label: "入口へ戻る",
+      primary: true,
+      onPress: async () => this.screen.home(),
+    });
+    this.body.add([shade, title, names, home]);
+    this.tweens.add({
+      targets: title,
+      scale: { from: 0.4, to: 1 },
+      duration: 500,
+      ease: "Back.easeOut",
+    });
+    playSound(this, "sfx.start");
   }
 }

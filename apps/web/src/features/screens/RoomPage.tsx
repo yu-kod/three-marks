@@ -1,7 +1,7 @@
 import type { GuestSession } from "@app/identity-client";
 import type { ApiClient } from "@app/web-core";
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { SkinnedGame, type SkinnedGameProps } from "./SkinnedGame";
 import { renameGuest } from "@/features/table/rename";
 import { createRoomActions } from "@/features/table/room-actions";
@@ -39,6 +39,7 @@ export function RoomPage({
   ...game
 }: Props) {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const store = useMemo(() => createStore(id), [createStore, id]);
 
   useEffect(() => store.start(), [store]);
@@ -55,10 +56,11 @@ export function RoomPage({
       kind: "room",
       guest: session,
       store,
+      home: () => navigate("/"),
       rename: (name) => renameGuest((n) => session.ensure(n), name),
       actions: { ...actions, share: () => shareInvite(inviteUrl, shareTarget) },
     };
-  }, [client, id, session, shareTarget, store]);
+  }, [client, id, navigate, session, shareTarget, store]);
 
   return <SkinnedGame screen={screen} {...game} />;
 }

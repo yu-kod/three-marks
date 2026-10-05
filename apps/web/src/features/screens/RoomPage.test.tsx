@@ -1,4 +1,4 @@
-import { screen as view } from "@testing-library/react";
+import { act, screen as view } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { RoomPage } from "./RoomPage";
@@ -36,6 +36,7 @@ function setup() {
   });
   const view_ = renderWithProviders(
     <Routes>
+      <Route path="/" element={<p>入口</p>} />
       <Route
         path="/r/:id"
         element={
@@ -104,5 +105,14 @@ describe("RoomPage", () => {
     await expect(room().rename(" ねむいネコ ")).resolves.toEqual({ ok: true });
 
     expect(session.ensure).toHaveBeenCalledWith("ねむいネコ");
+  });
+
+  it("入口へ戻れる（ゲームが終わったあと）", async () => {
+    const { room } = setup();
+    await vi.waitFor(() => room());
+
+    act(() => room().home());
+
+    expect(await view.findByText("入口")).toBeInTheDocument();
   });
 });

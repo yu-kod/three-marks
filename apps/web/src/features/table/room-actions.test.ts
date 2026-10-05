@@ -52,6 +52,21 @@ describe("createRoomActions", () => {
     expect(refresh).toHaveBeenCalledTimes(3);
   });
 
+  it("ゲームの操作：狙いを出す・1枚めくる・全部めくる", async () => {
+    const { actions, request, refresh } = setup();
+
+    await actions.declare([4, 9, 2]);
+    await actions.flip(1);
+    await actions.flip("all");
+
+    expect(request.mock.calls).toEqual([
+      ["/api/rooms/r%2F1/game/throws", { method: "POST", body: { aims: [4, 9, 2] } }],
+      ["/api/rooms/r%2F1/game/flips", { method: "POST", body: { count: 1 } }],
+      ["/api/rooms/r%2F1/game/flips", { method: "POST", body: { all: true } }],
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(3);
+  });
+
   it("失敗したら、画面に出す言葉で返す（満員などはサーバーの言葉、通信の失敗はそれと分かる言葉）", async () => {
     const full = setup(
       vi.fn().mockRejectedValue(new ApiRequestError(422, "ROOM_FULL", "ルームは満員（4人まで）"))

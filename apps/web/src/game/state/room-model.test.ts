@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { lobbyButtons, lobbyView } from "./lobby";
+import { createGame, createRng, viewFor } from "@three-marks/engine";
+import { gameModel } from "./game-model";
 import { roomModel } from "./room-model";
 import { seatDrawRounds } from "./seat-draw";
-import { buildGameView, buildRoom } from "@/test-utils/table";
+import { buildRoom } from "@/test-utils/table";
 
 describe("roomModel", () => {
   it("読み込み中・エラー・ゲーム中・待合室を見分ける（見出しはどれにも付ける）", () => {
@@ -16,16 +18,19 @@ describe("roomModel", () => {
       kind: "error",
       headline: "ルームが見つかりません",
     });
-    expect(
-      roomModel(
-        {
-          status: "ready",
-          room: buildRoom({ status: "playing" }),
-          game: buildGameView({ round: 2 }),
-        },
-        null
-      )
-    ).toEqual({ kind: "playing", headline: "ROUND 2" });
+    const playing = buildRoom({
+      status: "playing",
+      members: [
+        { id: "a", name: "A", cpu: false },
+        { id: "b", name: "B", cpu: false },
+      ],
+    });
+    const game = viewFor(createGame(["a", "b"], createRng(1)), "a");
+    expect(roomModel({ status: "ready", room: playing, game }, "a")).toEqual({
+      kind: "game",
+      headline: "ROUND 1",
+      game: gameModel(playing, game, "a"),
+    });
     expect(roomModel({ status: "ready", room, game: null }, "g1")).toEqual({
       kind: "lobby",
       headline: "待合室 1 / 4 人",

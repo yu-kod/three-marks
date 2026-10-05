@@ -78,6 +78,39 @@
     },
     "icon.up": {
       "image": "icon-up.svg"
+    },
+    "mark.1": {
+      "image": "marks/1.svg"
+    },
+    "mark.2": {
+      "image": "marks/2.svg"
+    },
+    "mark.3": {
+      "image": "marks/3.svg"
+    },
+    "icon.turn": {
+      "image": "icon-turn.svg"
+    },
+    "board.15": {
+      "image": "board/15.svg"
+    },
+    "board.16": {
+      "image": "board/16.svg"
+    },
+    "board.17": {
+      "image": "board/17.svg"
+    },
+    "board.18": {
+      "image": "board/18.svg"
+    },
+    "board.19": {
+      "image": "board/19.svg"
+    },
+    "board.20": {
+      "image": "board/20.svg"
+    },
+    "board.bull": {
+      "image": "board/bull.svg"
     }
   },
   "sounds": {

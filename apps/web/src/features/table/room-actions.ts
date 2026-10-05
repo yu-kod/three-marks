@@ -58,6 +58,10 @@ export function createRoomActions({
     start: post("game"),
     drawSeats: post("seats/draw"),
     arrange: (order: string[]) => send("seats", { method: "PUT", body: { order } }),
+    /** ここからはゲーム中。手番の人だけ（サーバーが確かめる） */
+    declare: (aims: number[]) => send("game/throws", { method: "POST", body: { aims } }),
+    flip: (count: number | "all") =>
+      send("game/flips", { method: "POST", body: count === "all" ? { all: true } : { count } }),
   };
 }
 
