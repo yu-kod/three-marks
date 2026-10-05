@@ -120,7 +120,8 @@ export function createGame(players: readonly PlayerId[], rng: Rng): GameState {
 
   const rules = rulesFor(players.length);
   const shuffled = shuffle(createDeck(rules), rng);
-  const startIndex = rng.nextInt(players.length);
+  // 席順の1番目が最初のスタートプレイヤー（解釈メモ11）。席順は呼び出し側（ルーム）で決める
+  const startIndex = 0;
   const { deck, hands } = deal(relabel(shuffled, 1, rng), players, startIndex, rules.handSize);
 
   return {

@@ -1,6 +1,7 @@
 import { createInMemoryGuestStore, type GuestIdentity } from "@app/identity";
 import { createApp } from "../app.js";
 import type { AppDeps } from "../deps.js";
+import type { GameView } from "@three-marks/engine";
 import type { RoomView } from "../rooms/room-service.js";
 import { createInMemoryRoomStore } from "../rooms/room-store.js";
 
@@ -12,6 +13,7 @@ type ResponseBody = {
   guest: GuestIdentity;
   token: string;
   room: RoomView;
+  game: GameView;
   error: { code: string; message: string };
 };
 

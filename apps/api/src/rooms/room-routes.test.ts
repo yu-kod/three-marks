@@ -20,6 +20,7 @@ describe("POST /api/rooms", () => {
         members: [{ id: alice.id, name: "Alice" }],
         maxPlayers: 4,
         seatDraw: null,
+        status: "waiting",
       },
     });
   });
@@ -160,6 +161,90 @@ describe("席の操作", () => {
     ["POST", "leave"],
     ["PUT", "seats"],
     ["POST", "seats/draw"],
+  ])("%s /:id/%s はゲストでなければ 401", async (method, path) => {
+    const { client, roomId } = await twoPlayers();
+
+    const res = await client.request(method, `/api/rooms/${roomId}/${path}`, { body: {} });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("ゲーム", () => {
+  async function twoPlayers() {
+    const client = testClient();
+    const alice = await client.guest("Alice");
+    const bob = await client.guest("Bob");
+    const { body } = await client.request("POST", "/api/rooms", { token: alice.token });
+    const roomId = body.room.id;
+    await client.request("POST", `/api/rooms/${roomId}/join`, { token: bob.token });
+    return { client, alice, bob, roomId };
+  }
+
+  it("POST /:id/game でホストが始めると、ルームが playing になり、自分向けのゲームが返る", async () => {
+    const { client, alice, roomId } = await twoPlayers();
+
+    const res = await client.request("POST", `/api/rooms/${roomId}/game`, { token: alice.token });
+
+    expect(res.status).toBe(201);
+    expect(res.body.room.status).toBe("playing");
+    expect(res.body.game.myHand).toHaveLength(5);
+    expect(res.body.game.currentThrower).toBe(alice.id);
+  });
+
+  it("GET /:id/game で自分向けの状態を取れる。ゲストでなければ観戦者として見る", async () => {
+    const { client, alice, bob, roomId } = await twoPlayers();
+    await client.request("POST", `/api/rooms/${roomId}/game`, { token: alice.token });
+
+    const mine = await client.request("GET", `/api/rooms/${roomId}/game`, { token: bob.token });
+    const spectator = await client.request("GET", `/api/rooms/${roomId}/game`);
+
+    expect(mine.status).toBe(200);
+    expect(mine.body.game.myHand).toHaveLength(5);
+    expect(spectator.body.game.myHand).toBeNull();
+    // 山札の中身と全員の手札（サーバーの GameState の項目）は返さない
+    expect(spectator.body.game).not.toHaveProperty("deck");
+    expect(spectator.body.game).not.toHaveProperty("hands");
+  });
+
+  it("POST /:id/game/throws で手番の人が狙いを出す", async () => {
+    const { client, alice, roomId } = await twoPlayers();
+    const started = await client.request("POST", `/api/rooms/${roomId}/game`, {
+      token: alice.token,
+    });
+    const aims = started.body.game.myHand!.slice(0, 3).map((c) => c.id);
+
+    const res = await client.request("POST", `/api/rooms/${roomId}/game/throws`, {
+      token: alice.token,
+      body: { aims },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.game.throws).toHaveLength(1);
+  });
+
+  it("手番でない人の投げは 422（GAME_RULE）、形がおかしければ 400", async () => {
+    const { client, alice, bob, roomId } = await twoPlayers();
+    await client.request("POST", `/api/rooms/${roomId}/game`, { token: alice.token });
+    const bobs = await client.request("GET", `/api/rooms/${roomId}/game`, { token: bob.token });
+
+    const notYourTurn = await client.request("POST", `/api/rooms/${roomId}/game/throws`, {
+      token: bob.token,
+      body: { aims: bobs.body.game.myHand!.slice(0, 3).map((c) => c.id) },
+    });
+    const malformed = await client.request("POST", `/api/rooms/${roomId}/game/throws`, {
+      token: alice.token,
+      body: { aims: ["x"] },
+    });
+
+    expect(notYourTurn.status).toBe(422);
+    expect(notYourTurn.body.error.code).toBe("GAME_RULE");
+    expect(malformed.status).toBe(400);
+  });
+
+  it.each([
+    ["POST", "game"],
+    ["POST", "game/throws"],
   ])("%s /:id/%s はゲストでなければ 401", async (method, path) => {
     const { client, roomId } = await twoPlayers();
 

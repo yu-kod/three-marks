@@ -7,7 +7,7 @@ const noShuffle: Rng = { nextInt: (n) => n - 1 };
 
 /** スタートは d。d が投げ終わって a の手番 */
 function midRound(): GameState {
-  const game = createGame(["a", "b", "c", "d"], noShuffle);
+  const game = createGame(["d", "a", "b", "c"], noShuffle);
   return throwCards(
     game,
     "d",
@@ -124,10 +124,10 @@ describe("viewFor — 見せる情報", () => {
 
     expect(view.myHand).toEqual(state.hands.a);
     expect(view.players).toEqual([
+      { id: "d", marks: state.marks.d, handCount: 2 },
       { id: "a", marks: state.marks.a, handCount: 5 },
       { id: "b", marks: state.marks.b, handCount: 5 },
       { id: "c", marks: state.marks.c, handCount: 5 },
-      { id: "d", marks: state.marks.d, handCount: 2 },
     ]);
     expect(view).toMatchObject({
       round: 1,

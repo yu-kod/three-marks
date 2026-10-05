@@ -12,6 +12,7 @@ const room: RoomRecord = {
   createdAt: 1_000,
   expiresAt: 2_000,
   seatDraw: null,
+  game: null,
   version: 1,
 };
 
@@ -23,6 +24,7 @@ const item = {
   createdAt: 1_000,
   expiresAt: 2_000,
   seatDraw: null,
+  game: null,
   version: 1,
 };
 
