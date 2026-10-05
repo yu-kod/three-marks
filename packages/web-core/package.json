@@ -1,0 +1,17 @@
+{
+  "name": "@app/web-core",
+  "private": true,
+  "type": "module",
+  "description": "ブラウザ側の共通部品（API クライアント、安全なストレージ）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1"
+  }
+}

@@ -1,0 +1,83 @@
+# 依存ライブラリの更新を自動で検知し、毎週 PR を作成する。
+#
+# 方針:
+#   - patch / minor は 1 本の PR にまとめる（PR 数を抑える）
+#   - major は 1 ライブラリ 1 PR で出し、人が挙動を確認してからマージする
+#   - ただし peer dependency で結ばれたライブラリ群（react と react-dom、
+#     vite と vitest など）は major もまとめて 1 本にする
+#     → 片方だけ上げた PR は npm ci が ERESOLVE で落ち、単独では絶対にマージできない
+#
+# ワークスペース構成なので npm はルートの 1 か所だけを見る（lockfile がルートに 1 つ）。
+# versioning-strategy: increase は package.json のレンジも一緒に引き上げる。
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    # 打ち切られた更新は PR にすらならず存在に気づけないため、余裕を持たせる
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    labels: ["dependencies"]
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    ignore:
+      # typescript-eslint が TS 7 に未対応で、上げると eslint が起動時に落ちる。
+      # 対応は typescript-eslint#10940 で追跡中。対応が入ったらこの ignore を消す。
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+        update-types: ["major"]
+      # vite / vitest / プラグインは peer dependency で世代が縛られている
+      vite:
+        patterns:
+          - vite
+          - "@vitejs/*"
+          - vitest
+          - "@vitest/*"
+        update-types: ["major"]
+
+  - package-ecosystem: terraform
+    directories: ["/infra", "/infra/bootstrap"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "infra"]
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

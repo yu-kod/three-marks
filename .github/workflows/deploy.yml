@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-northeast-1
+
+permissions:
+  # OIDC でロールを引き受けるために必要。長期アクセスキーは使わない
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    # テンプレートリポジトリそのものはデプロイしない（AWS の設定を持たないため）。
+    # 「Use this template」で作ったリポジトリでは is_template が false になり、ここが動く
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    concurrency:
+      # デプロイは同時に走らせない。後から来たものも捨てずに順番に流す
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      # 初回セットアップが済んでいないとき、OIDC の分かりにくいエラーではなく
+      # 何をすればよいかを出す
+      - name: Check setup
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "::error::Secrets に AWS_ROLE_ARN が未設定です。docs/deploy.md の「初回だけ必要な作業」に従って infra/bootstrap を apply し、出力された github_actions_role_arn を登録してください。"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: hashicorp/setup-terraform@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Terraform の archive_file が apps/api/dist を固めるため、apply より先にビルドする
+      - name: Build Lambda
+        run: npm run build:lambda
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false
+
+      - name: Get Terraform outputs
+        id: tf
+        working-directory: infra
+        run: |
+          {
+            echo "s3_bucket=$(terraform output -raw frontend_bucket_name)"
+            echo "cf_dist_id=$(terraform output -raw cloudfront_distribution_id)"
+            echo "app_url=$(terraform output -raw app_url)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Frontend
+        run: npm run build:web
+
+      - name: Deploy Frontend to S3
+        run: aws s3 sync apps/web/dist/ "s3://${{ steps.tf.outputs.s3_bucket }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.tf.outputs.cf_dist_id }}" \
+            --paths "/*"
+
+      - name: Smoke test
+        run: |
+          url="${{ steps.tf.outputs.app_url }}"
+          echo "deployed: $url"
+          # CloudFront への反映を待ちつつヘルスチェックを叩く
+          for i in $(seq 1 10); do
+            if curl -fsS "$url/api/health" | grep -q '"ok"'; then
+              echo "health check passed"
+              exit 0
+            fi
+            echo "attempt $i failed; retrying in 15s"
+            sleep 15
+          done
+          echo "::error::health check failed at $url/api/health"
+          exit 1
+
+      # 失敗時に空の URL で「Deployed to」と書かないよう、成功時のみ出す
+      - name: Summary
+        run: echo "### Deployed to ${{ steps.tf.outputs.app_url }}" >> "$GITHUB_STEP_SUMMARY"

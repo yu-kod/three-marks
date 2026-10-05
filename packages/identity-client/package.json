@@ -1,0 +1,28 @@
+{
+  "name": "@app/identity-client",
+  "private": true,
+  "type": "module",
+  "description": "ブラウザ側のゲストセッション（React にもゲームエンジンにも依存しないストア）と、React 用のアダプタ（./react）。見た目は持たない",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.tsx"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@app/web-core": "*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "jsdom": "^30.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

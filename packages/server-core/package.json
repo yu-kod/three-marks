@@ -1,0 +1,20 @@
+{
+  "name": "@app/server-core",
+  "private": true,
+  "type": "module",
+  "description": "Hono バックエンドの共通部品（エラー、ログ、入力検証、DynamoDB クライアント）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "hono": "^4.13.13",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+
+# Lambda の zip（infra の archive_file が生成する）
+apps/api/lambda.zip
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Playwright
+test-results/
+playwright-report/
+
+.DS_Store

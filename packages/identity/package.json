@@ -1,0 +1,21 @@
+{
+  "name": "@app/identity",
+  "private": true,
+  "type": "module",
+  "description": "「このリクエストは誰か」を扱う共有部品（ゲスト認証。Cognito は今後）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@app/server-core": "*",
+    "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "hono": "^4.13.13",
+    "zod": "^4.6.5"
+  }
+}
