@@ -37,6 +37,7 @@ npm workspaces のモノレポ。
 
 ```
 apps/
+  engine/       — ゲームエンジン（純粋関数。I/O を持たない。docs/spec.md）
   api/          — Hono API（Lambda / ローカルサーバーの両方で同じアプリを動かす）
   web/          — React SPA（Vite + Tailwind + shadcn/ui）
 packages/       — アプリをまたいで再利用する部品。アプリ固有の知識を持たない

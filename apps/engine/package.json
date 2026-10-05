@@ -1,0 +1,14 @@
+{
+  "name": "@three-marks/engine",
+  "private": true,
+  "type": "module",
+  "description": "three-marks のゲームエンジン。I/O を持たない純粋関数（docs/spec.md）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  }
+}

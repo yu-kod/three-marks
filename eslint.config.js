@@ -32,6 +32,20 @@ export default tseslint.config(
     },
   },
   {
+    // ゲームエンジンは I/O を持たない純粋関数。乱数は Rng を引数で注入する（CLAUDE.md）
+    files: ["apps/engine/**/*.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Math",
+          property: "random",
+          message: "ゲームエンジンで Math.random() は使わない。Rng を引数で注入すること。",
+        },
+      ],
+    },
+  },
+  {
     // shadcn/ui の生成物は variants を同じファイルから export する
     files: ["apps/web/src/components/ui/**"],
     rules: {
