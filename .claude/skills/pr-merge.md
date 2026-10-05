@@ -48,4 +48,7 @@ CIが通れば GitHub Auto-merge により自動的にマージされる。
 
 - GitHub リポジトリ設定で「Allow auto-merge」が有効であること
 - ブランチルールセットで必須ステータスチェックが設定されていること
-- マージ後、ブランチは自動削除される（GitHub設定済み）
+- マージ後のブランチは、リポジトリの設定「Automatically delete head branches」（Settings → General → Pull Requests）で GitHub が消す。
+  **この設定は作業者からは変えられない。** 新しいリポジトリでは、オンになっているかを利用者に確かめてもらう
+- マージ後に `mcp__github__list_branches` でブランチが消えたことを確かめる。残っていたら設定を確かめてもらい、
+  残ったものは Actions の「Delete merged branches」を手で実行して片付けてもらう（作業者の環境からはブランチを消せない）
