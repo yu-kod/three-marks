@@ -10,6 +10,10 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  build: {
+    // Phaser（約 1.4MB）はゲーム画面を開いたときだけ読む別チャンク。それ以外はこの上限に収める
+    chunkSizeWarningLimit: 1500,
+  },
   server: {
     // apps/api のローカルサーバー（npm run dev）へ流す
     proxy: {

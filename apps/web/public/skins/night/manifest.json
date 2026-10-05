@@ -1,0 +1,56 @@
+{
+  "id": "night",
+  "name": "ナイト",
+  "colors": {
+    "background": "#0f1a2b",
+    "panel": "#08101c",
+    "text": "#eef3fb",
+    "muted": "#8fa0bb",
+    "accent": "#19b6d4",
+    "players": ["#19b6d4", "#e5487a", "#f2c230", "#5fd068"]
+  },
+  "fonts": {
+    "display": "'Barlow Semi Condensed', 'Noto Sans JP', sans-serif",
+    "body": "'Noto Sans JP', sans-serif"
+  },
+  "card": {
+    "width": 44,
+    "height": 112,
+    "radius": 4
+  },
+  "motion": {
+    "flipMs": 280,
+    "dealMs": 180,
+    "cutInMs": 1200
+  },
+  "slots": {
+    "card.face": {
+      "image": "card-face.svg"
+    },
+    "card.back": {
+      "image": "card-back.svg"
+    },
+    "glyph.15": {
+      "image": "glyphs/15.svg"
+    },
+    "glyph.16": {
+      "image": "glyphs/16.svg"
+    },
+    "glyph.17": {
+      "image": "glyphs/17.svg"
+    },
+    "glyph.18": {
+      "image": "glyphs/18.svg"
+    },
+    "glyph.19": {
+      "image": "glyphs/19.svg"
+    },
+    "glyph.20": {
+      "image": "glyphs/20.svg"
+    },
+    "glyph.bull": {
+      "image": "glyphs/bull.svg"
+    }
+  },
+  "sounds": {}
+}
