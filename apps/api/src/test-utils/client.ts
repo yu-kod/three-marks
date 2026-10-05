@@ -3,6 +3,8 @@ import { createApp } from "../app.js";
 import type { AppDeps } from "../deps.js";
 import type { GameView } from "@three-marks/engine";
 import type { RoomView } from "../rooms/room-service.js";
+import { createInMemoryConnectionStore } from "../realtime/connection-store.js";
+import { silentNotifier } from "../realtime/notifier.js";
 import { createInMemoryRoomStore } from "../rooms/room-store.js";
 
 /**
@@ -25,6 +27,8 @@ export function testClient(deps: Partial<AppDeps> = {}) {
   const app = createApp({
     guestStore: createInMemoryGuestStore(),
     roomStore: createInMemoryRoomStore(),
+    connectionStore: createInMemoryConnectionStore(),
+    notifier: silentNotifier,
     ...deps,
   });
 

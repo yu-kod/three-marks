@@ -12,9 +12,9 @@ import { createRoomService } from "./rooms/room-service.js";
  * listen は呼び出し側に任せる。依存は環境変数から組み立て、テストでは直接渡して差し替える。
  */
 export function createApp(deps: Partial<AppDeps> = {}) {
-  const { guestStore, roomStore } = { ...createDepsFromEnv(), ...deps };
+  const { guestStore, roomStore, notifier } = { ...createDepsFromEnv(), ...deps };
   const guests = createGuestService({ store: guestStore });
-  const rooms = createRoomService({ store: roomStore });
+  const rooms = createRoomService({ store: roomStore, notifier });
 
   const app = new Hono<IdentityEnv>();
 

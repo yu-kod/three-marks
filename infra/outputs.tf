@@ -27,3 +27,8 @@ output "app_table_name" {
   description = "アプリの DynamoDB テーブル名"
   value       = module.table.name
 }
+
+output "websocket_url" {
+  description = "クライアントが繋ぐ WebSocket の URL。フロントエンドのビルドに渡す（VITE_WS_URL）"
+  value       = module.ws.url
+}

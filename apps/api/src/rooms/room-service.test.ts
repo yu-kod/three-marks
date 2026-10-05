@@ -1,6 +1,6 @@
 import { ConflictError, ForbiddenError, NotFoundError, UnprocessableError } from "@app/server-core";
 import { createRng as seeded, type Rng } from "@three-marks/engine";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createRoomService,
   ROOM_TTL_SECONDS,
@@ -521,5 +521,46 @@ describe("throwCards", () => {
     await expect(service.getRoom("room-1")).resolves.toMatchObject({ status: "finished" });
     const view = await service.getGame("room-1", alice);
     expect(view.winners!.length).toBeGreaterThan(0);
+  });
+});
+
+describe("ルームの更新の通知", () => {
+  function withNotifier() {
+    const roomChanged = vi.fn(async (_roomId: string) => {});
+    return { roomChanged, ...setup({ notifier: { roomChanged }, createRng: () => seeded(1) }) };
+  }
+
+  it("ルームを書き換えたら、そのルームの更新を知らせる", async () => {
+    const { service, roomChanged } = withNotifier();
+    await service.createRoom(alice);
+
+    await service.join("room-1", bob);
+
+    expect(roomChanged).toHaveBeenCalledWith("room-1");
+  });
+
+  it("ゲームが進んだときも知らせる", async () => {
+    const { service, roomChanged } = withNotifier();
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+    await service.startGame("room-1", alice);
+    roomChanged.mockClear();
+    const hand = (await service.getGame("room-1", alice)).myHand!.slice(0, 3).map((c) => c.id);
+
+    await service.throwCards("room-1", alice, hand);
+
+    expect(roomChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("何も変わらなかった（参加済みの人の開き直し）・失敗したときは知らせない", async () => {
+    const { service, roomChanged } = withNotifier();
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+    roomChanged.mockClear();
+
+    await service.join("room-1", bob);
+    await service.startGame("room-1", bob).catch(() => {});
+
+    expect(roomChanged).not.toHaveBeenCalled();
   });
 });

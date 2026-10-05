@@ -16,6 +16,7 @@ import {
   type GameView,
   type GameState,
 } from "@three-marks/engine";
+import { silentNotifier, type RoomNotifier } from "../realtime/notifier.js";
 import { withGameRules } from "./game-errors.js";
 import type { RoomRecord, RoomStore } from "./room-store.js";
 
@@ -42,6 +43,8 @@ export type RoomServiceDeps = {
   generateId?: () => string;
   /** 席順を引く・ゲームを進めるときの乱数。使うたびに新しいシードで作る（シードはクライアントに出さない） */
   createRng?: () => Rng;
+  /** ルームを書き換えたあとに、そのルームの接続へ知らせる（WebSocket） */
+  notifier?: RoomNotifier;
 };
 
 /** 同時の書き込みに負けたとき、読み直してやり直す回数の上限 */
@@ -83,6 +86,7 @@ export function createRoomService({
   now = Date.now,
   generateId = generateRoomId,
   createRng = randomRng,
+  notifier = silentNotifier,
 }: RoomServiceDeps) {
   const nowSeconds = () => Math.floor(now() / 1000);
 
@@ -114,6 +118,7 @@ export function createRoomService({
       }
       try {
         await store.save(changed);
+        await notifier.roomChanged(roomId);
         return changed;
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt >= SAVE_ATTEMPTS) {

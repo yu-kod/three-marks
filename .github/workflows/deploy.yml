@@ -73,9 +73,13 @@ jobs:
             echo "s3_bucket=$(terraform output -raw frontend_bucket_name)"
             echo "cf_dist_id=$(terraform output -raw cloudfront_distribution_id)"
             echo "app_url=$(terraform output -raw app_url)"
+            echo "ws_url=$(terraform output -raw websocket_url)"
           } >> "$GITHUB_OUTPUT"
 
+      # WebSocket の URL はビルド時に埋め込む（apps/web/src/lib/room-updates.ts）
       - name: Build Frontend
+        env:
+          VITE_WS_URL: ${{ steps.tf.outputs.ws_url }}
         run: npm run build:web
 
       - name: Deploy Frontend to S3
@@ -102,6 +106,13 @@ jobs:
           done
           echo "::error::health check failed at $url/api/health"
           exit 1
+
+      # ルームの更新が WebSocket で届くかを、本番で実際に繋いで確かめる
+      - name: Realtime smoke test
+        env:
+          APP_URL: ${{ steps.tf.outputs.app_url }}
+          WS_URL: ${{ steps.tf.outputs.ws_url }}
+        run: node apps/api/scripts/smoke-realtime.mjs
 
       # 失敗時に空の URL で「Deployed to」と書かないよう、成功時のみ出す
       - name: Summary

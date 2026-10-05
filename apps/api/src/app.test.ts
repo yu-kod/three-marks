@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryGuestStore } from "@app/identity";
 import { createApp } from "./app.js";
+import { testClient } from "./test-utils/client.js";
 
 describe("createApp", () => {
   beforeEach(() => {
@@ -45,5 +46,17 @@ describe("createApp", () => {
 
     const logged = JSON.parse(vi.mocked(console.info).mock.calls[0]?.[0] as string);
     expect(logged).toMatchObject({ path: "/api/health", status: 200 });
+  });
+
+  it("ルームが変わったら通知する（WebSocket）", async () => {
+    const roomChanged = vi.fn(async () => {});
+    const client = testClient({ notifier: { roomChanged } });
+    const alice = await client.guest("Alice");
+    const bob = await client.guest("Bob");
+    const { body } = await client.request("POST", "/api/rooms", { token: alice.token });
+
+    await client.request("POST", `/api/rooms/${body.room.id}/join`, { token: bob.token });
+
+    expect(roomChanged).toHaveBeenCalledWith(body.room.id);
   });
 });
