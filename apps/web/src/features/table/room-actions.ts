@@ -1,5 +1,5 @@
 import type { Guest } from "@app/identity-client";
-import { ApiRequestError, type ApiClient } from "@app/web-core";
+import { ApiRequestError, type ApiClient, type RequestOptions } from "@app/web-core";
 import type { RoomView } from "@/game/state/types";
 
 /** 操作の結果。失敗したら画面にそのまま出せる言葉を返す（Phaser 側は分岐せずに出すだけ） */
@@ -11,7 +11,8 @@ type Deps = {
   ensureGuest: () => Promise<Guest>;
 };
 
-const messageOf = (error: unknown) =>
+/** 失敗を画面に出す言葉にする。サーバーの言葉があればそれを使う */
+export const messageOf = (error: unknown) =>
   error instanceof ApiRequestError
     ? error.message
     : "うまくいきませんでした。もう一度試してください";
@@ -39,17 +40,25 @@ export function createRoomActions({
   roomId,
   refresh,
 }: Deps & { roomId: string; refresh: () => void }) {
-  const post = (action: string) => async (): Promise<ActionResult> => {
+  async function send(path: string, init: RequestOptions): Promise<ActionResult> {
     try {
       await ensureGuest();
-      await client.request(`${roomPath(roomId)}/${action}`, { method: "POST" });
+      await client.request(`${roomPath(roomId)}/${path}`, init);
       refresh();
       return { ok: true };
     } catch (error) {
       return { ok: false, message: messageOf(error) };
     }
+  }
+  const post = (path: string) => () => send(path, { method: "POST" });
+  return {
+    join: post("join"),
+    leave: post("leave"),
+    /** ここからはホストだけ（サーバーが確かめる） */
+    start: post("game"),
+    drawSeats: post("seats/draw"),
+    arrange: (order: string[]) => send("seats", { method: "PUT", body: { order } }),
   };
-  return { join: post("join"), leave: post("leave") };
 }
 
 export type RoomActions = ReturnType<typeof createRoomActions>;

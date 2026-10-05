@@ -29,8 +29,14 @@ export const SLOT_KEYS = [
   "badge.host",
   /** 一言のお知らせの地 */
   "toast",
+  /** ホストが席をひとつ前へ動かすボタン */
+  "icon.up",
 ] as const;
 export type SlotKey = (typeof SLOT_KEYS)[number];
+
+/** 効果音。鳴らす側は名前で鳴らすだけで、音そのものはスキンが決める */
+export const SOUND_KEYS = ["sfx.tap", "sfx.seat", "sfx.flip", "sfx.start"] as const;
+export type SoundKey = (typeof SOUND_KEYS)[number];
 
 /**
  * 差し込み口の中身。基本はデザインした絵（image）を入れる。
@@ -91,8 +97,13 @@ const manifestSchema = z.object({
     cutInMs: z.number().nonnegative(),
   }),
   slots: slotsSchema,
-  /** 音の名前 → マニフェストから見た相対パス */
-  sounds: z.record(z.string(), z.string()),
+  /** 効果音の名前 → マニフェストから見た相対パス */
+  sounds: z.object(
+    Object.fromEntries(SOUND_KEYS.map((key) => [key, z.string().min(1)])) as Record<
+      SoundKey,
+      z.ZodString
+    >
+  ),
 });
 
 export type SkinManifest = z.infer<typeof manifestSchema>;
@@ -110,7 +121,7 @@ type Colors = SkinManifest["colors"];
 export type Skin = Omit<SkinManifest, "colors" | "slots" | "sounds"> & {
   colors: { [K in keyof Colors]: Colors[K] extends string ? number : number[] };
   slots: Record<SlotKey, Visual>;
-  assets: { sounds: Record<string, string> };
+  assets: { sounds: Record<SoundKey, string> };
 };
 
 type ManifestVisual = z.infer<typeof visualSchema>;
@@ -145,8 +156,8 @@ export function parseSkin(manifest: unknown, manifestUrl: string): Skin {
     ) as Skin["slots"],
     assets: {
       sounds: Object.fromEntries(
-        Object.entries(sounds).map(([key, path]) => [key, new URL(path, manifestUrl).href])
-      ),
+        SOUND_KEYS.map((key) => [key, new URL(sounds[key], manifestUrl).href])
+      ) as Skin["assets"]["sounds"],
     },
   };
 }

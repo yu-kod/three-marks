@@ -13,14 +13,20 @@ export type Screen =
       guest: GuestSession;
       /** ルームを作って、そのルームの画面へ移る */
       createRoom: () => Promise<ActionResult>;
+      rename: (name: string) => Promise<ActionResult>;
     }
   | {
       kind: "room";
       guest: GuestSession;
       store: TableStore;
+      rename: (name: string) => Promise<ActionResult>;
       actions: {
         join: () => Promise<ActionResult>;
         leave: () => Promise<ActionResult>;
         share: () => Promise<ShareResult>;
+        /** ここからはホストだけ */
+        start: () => Promise<ActionResult>;
+        drawSeats: () => Promise<ActionResult>;
+        arrange: (order: string[]) => Promise<ActionResult>;
       };
     };

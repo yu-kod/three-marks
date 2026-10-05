@@ -96,4 +96,13 @@ describe("RoomPage", () => {
       expect.objectContaining({ url: `${window.location.origin}/r/room-1` })
     );
   });
+
+  it("名前を変えると、このブラウザのゲストの名前が変わる", async () => {
+    const { session, room } = setup();
+    await vi.waitFor(() => room());
+
+    await expect(room().rename(" ねむいネコ ")).resolves.toEqual({ ok: true });
+
+    expect(session.ensure).toHaveBeenCalledWith("ねむいネコ");
+  });
 });

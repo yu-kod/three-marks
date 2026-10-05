@@ -1,8 +1,9 @@
-import { SLOT_KEYS, type SkinManifest } from "@/game/skin/skin";
+import { SLOT_KEYS, SOUND_KEYS, type SkinManifest } from "@/game/skin/skin";
 
-type Overrides = Partial<Omit<SkinManifest, "colors" | "slots">> & {
+type Overrides = Partial<Omit<SkinManifest, "colors" | "slots" | "sounds">> & {
   colors?: Partial<SkinManifest["colors"]>;
   slots?: Partial<SkinManifest["slots"]>;
+  sounds?: Partial<SkinManifest["sounds"]>;
 };
 
 /** テスト用のスキンのマニフェスト。差し込み口は既定で文字を入れておき、指定したところだけ変える */
@@ -24,12 +25,15 @@ export function buildManifest(overrides: Overrides = {}): SkinManifest {
     slots: Object.fromEntries(
       SLOT_KEYS.map((key) => [key, { text: key, color: "#101218", size: 0.5 }])
     ) as SkinManifest["slots"],
-    sounds: {},
+    sounds: Object.fromEntries(
+      SOUND_KEYS.map((key) => [key, `${key}.wav`])
+    ) as SkinManifest["sounds"],
   };
   return {
     ...base,
     ...overrides,
     colors: { ...base.colors, ...overrides.colors },
     slots: { ...base.slots, ...overrides.slots } as SkinManifest["slots"],
+    sounds: { ...base.sounds, ...overrides.sounds } as SkinManifest["sounds"],
   };
 }

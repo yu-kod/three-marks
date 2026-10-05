@@ -75,7 +75,15 @@
     },
     "toast": {
       "image": "toast.svg"
+    },
+    "icon.up": {
+      "image": "icon-up.svg"
     }
   },
-  "sounds": {}
+  "sounds": {
+    "sfx.tap": "sfx/tap.wav",
+    "sfx.seat": "sfx/seat.wav",
+    "sfx.flip": "sfx/flip.wav",
+    "sfx.start": "sfx/start.wav"
+  }
 }

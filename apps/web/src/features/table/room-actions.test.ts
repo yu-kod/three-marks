@@ -5,7 +5,7 @@ import { buildRoom } from "@/test-utils/table";
 
 const guest = { kind: "guest" as const, id: "g1", name: "あなた" };
 
-function setup(request = vi.fn(async () => ({ room: buildRoom() }))) {
+function setup(request = vi.fn(async (_path: string, _init?: unknown) => ({ room: buildRoom() }))) {
   const ensureGuest = vi.fn(async () => guest);
   const refresh = vi.fn();
   const actions = createRoomActions({
@@ -35,6 +35,21 @@ describe("createRoomActions", () => {
 
     expect(request).toHaveBeenCalledWith("/api/rooms/r%2F1/leave", { method: "POST" });
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("ホストの操作：ゲームを始める・カードを引いて席順を決める・席を並べる", async () => {
+    const { actions, request, refresh } = setup();
+
+    await actions.start();
+    await actions.drawSeats();
+    await actions.arrange(["b", "a"]);
+
+    expect(request.mock.calls).toEqual([
+      ["/api/rooms/r%2F1/game", { method: "POST" }],
+      ["/api/rooms/r%2F1/seats/draw", { method: "POST" }],
+      ["/api/rooms/r%2F1/seats", { method: "PUT", body: { order: ["b", "a"] } }],
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(3);
   });
 
   it("失敗したら、画面に出す言葉で返す（満員などはサーバーの言葉、通信の失敗はそれと分かる言葉）", async () => {

@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import type { Skin } from "@/game/skin/skin";
+import { playSound } from "./sound";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
 
@@ -36,6 +37,7 @@ export function drawButton(scene: Phaser.Scene, skin: Skin, options: ButtonOptio
     if (busy) return;
     busy = true;
     button.setAlpha(0.6);
+    playSound(scene, "sfx.tap");
     scene.tweens.add({ targets: button, scale: 0.96, duration: skin.motion.tapMs, yoyo: true });
     try {
       await onPress();

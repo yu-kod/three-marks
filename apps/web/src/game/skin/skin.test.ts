@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSkin, SLOT_KEYS } from "./skin";
+import { parseSkin, SLOT_KEYS, SOUND_KEYS } from "./skin";
 import { buildManifest } from "@/test-utils/skin";
 
 const URL_ = "https://example.com/skins/standard/manifest.json";
@@ -9,7 +9,7 @@ describe("parseSkin", () => {
     const skin = parseSkin(
       buildManifest({
         slots: { "glyph.20": { image: "glyphs/20.svg" } },
-        sounds: { flip: "sfx/flip.mp3" },
+        sounds: { "sfx.flip": "sfx/flip.mp3" },
       }),
       URL_
     );
@@ -17,7 +17,7 @@ describe("parseSkin", () => {
     expect(skin.slots["glyph.20"]).toEqual({
       image: "https://example.com/skins/standard/glyphs/20.svg",
     });
-    expect(skin.assets.sounds).toEqual({ flip: "https://example.com/skins/standard/sfx/flip.mp3" });
+    expect(skin.assets.sounds["sfx.flip"]).toBe("https://example.com/skins/standard/sfx/flip.mp3");
   });
 
   it("文字や図形も差し込める。色は Phaser が使う数値にする", () => {
@@ -37,6 +37,14 @@ describe("parseSkin", () => {
     expect(skin.slots["glyph.15"]).toEqual({ text: "15", color: 0x101218, size: 0.5 });
     expect(skin.slots["card.face"]).toEqual({ rect: 0xf4f5f7 });
     expect(skin.slots["glyph.bull"]).toEqual({ rings: [0x2fa36b, 0xd93a3a] });
+  });
+
+  it("効果音は決まった名前をすべて持つ。欠けていたら読み込まない", () => {
+    const { sounds, ...manifest } = buildManifest();
+    const { "sfx.flip": _missing, ...rest } = sounds;
+
+    expect(SOUND_KEYS).toEqual(["sfx.tap", "sfx.seat", "sfx.flip", "sfx.start"]);
+    expect(() => parseSkin({ ...manifest, sounds: rest }, URL_)).toThrow("sfx.flip");
   });
 
   it("差し込み口が1つでも欠けていたら読み込まない（どれが欠けているかを伝える）", () => {
@@ -69,6 +77,7 @@ describe("parseSkin", () => {
       "seat.cpu",
       "badge.host",
       "toast",
+      "icon.up",
     ]);
   });
 });

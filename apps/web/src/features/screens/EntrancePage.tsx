@@ -2,6 +2,7 @@ import type { GuestSession } from "@app/identity-client";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { SkinnedGame, type SkinnedGameProps } from "./SkinnedGame";
+import { renameGuest } from "@/features/table/rename";
 import { createRoom as createRoomWith } from "@/features/table/room-actions";
 import type { Screen } from "@/game/screens";
 import { api } from "@/lib/api";
@@ -33,6 +34,7 @@ export function EntrancePage({
         navigate(`/r/${encodeURIComponent(result.roomId)}`);
         return { ok: true };
       },
+      rename: (name) => renameGuest((n) => session.ensure(n), name),
     }),
     [createRoom, navigate, session]
   );

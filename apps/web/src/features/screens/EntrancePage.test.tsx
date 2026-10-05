@@ -6,6 +6,7 @@ import type { MountGame } from "@/features/table/GameCanvas";
 import type { Screen } from "@/game/screens";
 import { parseSkin } from "@/game/skin/skin";
 import { renderWithProviders } from "@/test-utils/render";
+import { idleGuest } from "@/test-utils/screens";
 import { buildManifest } from "@/test-utils/skin";
 
 const skin = parseSkin(buildManifest(), "https://example.com/skins/standard/manifest.json");
@@ -14,6 +15,8 @@ function setup(
   createRoom?: () => Promise<{ ok: true; roomId: string } | { ok: false; message: string }>
 ) {
   let shown = null as Screen | null;
+  const session = idleGuest();
+  vi.spyOn(session, "ensure").mockResolvedValue({ kind: "guest", id: "g1", name: "ねむいネコ" });
   const mount = vi.fn<MountGame>(async (_parent, { screen }) => {
     shown = screen;
     return () => {};
@@ -22,7 +25,14 @@ function setup(
     <Routes>
       <Route
         path="/"
-        element={<EntrancePage loadSkin={async () => skin} createRoom={createRoom} mount={mount} />}
+        element={
+          <EntrancePage
+            loadSkin={async () => skin}
+            createRoom={createRoom}
+            session={session}
+            mount={mount}
+          />
+        }
       />
       <Route path="/r/:id" element={<p>ルームの画面</p>} />
     </Routes>
@@ -31,7 +41,7 @@ function setup(
     if (shown?.kind !== "entrance") throw new Error("入口ではない");
     return shown;
   };
-  return { screen };
+  return { screen, session };
 }
 
 describe("EntrancePage", () => {
@@ -73,5 +83,14 @@ describe("EntrancePage", () => {
 
     expect(await view.findByText("ルームの画面")).toBeInTheDocument();
     expect(fetchFn.mock.calls.map(([url]) => url)).toContain("/api/rooms");
+  });
+
+  it("名前を変えると、このブラウザのゲストの名前が変わる", async () => {
+    const { screen, session } = setup(async () => ({ ok: true, roomId: "r" }));
+    await vi.waitFor(() => screen());
+
+    await expect(screen().rename("ねむいネコ")).resolves.toEqual({ ok: true });
+
+    expect(session.ensure).toHaveBeenCalledWith("ねむいネコ");
   });
 });

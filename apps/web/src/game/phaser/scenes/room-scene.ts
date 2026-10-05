@@ -2,13 +2,24 @@ import * as Phaser from "phaser";
 import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
-import { drawCard, type CardFace } from "../parts/card";
+import { drawCard } from "../parts/card";
+import { drawNameChip } from "../parts/name-editor";
+import { playSeatDrawReveal } from "../parts/seat-draw-reveal";
+import { playSound } from "../parts/sound";
+import type { CardFace } from "@/game/state/card-face";
 import { drawSeat, SEAT_SIZE } from "../parts/seat";
 import { addText } from "../parts/text";
 import { showToast } from "../parts/toast";
 import { placeVisual } from "../parts/visual";
 import { BaseScene } from "./base-scene";
-import type { LobbyAction, LobbyButton, LobbyView } from "@/game/state/lobby";
+import type { ActionResult } from "@/features/table/room-actions";
+import {
+  orderMovingUp,
+  type LobbyAction,
+  type LobbyButton,
+  type LobbyView,
+} from "@/game/state/lobby";
+import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { roomModel } from "@/game/state/room-model";
 import type { Skin } from "@/game/skin/skin";
 
@@ -74,7 +85,19 @@ export class RoomScene extends BaseScene {
       this.renderPlayingPlaceholder();
     } else if (model.kind === "lobby") {
       this.renderLobby(model.view, model.buttons);
+      this.revealSeatDraw(model.seatDraw);
     }
+  }
+
+  /** 前に描いたときの席順の引き（JSON）。まだ描いていなければ undefined */
+  private lastSeatDraw: string | undefined;
+
+  /** 新しくカードを引いて席順を決めたら、誰が何を引いたかを1枚ずつめくって見せる */
+  private revealSeatDraw(rounds: SeatDrawRound[] | null) {
+    const key = JSON.stringify(rounds);
+    const play = shouldPlayReveal(this.lastSeatDraw, key);
+    this.lastSeatDraw = key;
+    if (play) void playSeatDrawReveal(this, this.skin, rounds!);
   }
 
   private renderLobby(view: LobbyView, buttons: LobbyButton[]) {
@@ -86,10 +109,22 @@ export class RoomScene extends BaseScene {
         bold: true,
       })
     );
-    const seatKeys = view.seats.map((s, i) => (s.kind === "cpu" ? `cpu-${i}` : `${s.name}-${i}`));
+    const seatKeys = view.seats.map((s, i) => (s.kind === "cpu" ? `cpu-${i}` : `${s.id}-${i}`));
+    const firstDraw = this.shownSeats.length === 0;
+    const moveUp = (index: number) => async () => {
+      const result = await this.screen.actions.arrange(orderMovingUp(view, index));
+      if (!result.ok) showToast(this, skin, result.message);
+    };
     view.seats.forEach((seat, index) => {
       const y = SEATS_TOP + index * (SEAT_SIZE.height + SEAT_GAP);
-      const plate = drawSeat(this, skin, { x: cx, y, seat, index });
+      const canMove = seat.kind === "player" && seat.canMoveUp;
+      const plate = drawSeat(this, skin, {
+        x: cx,
+        y,
+        seat,
+        index,
+        onMoveUp: canMove ? () => void moveUp(index)() : undefined,
+      });
       this.body.add(plate);
       if (!this.shownSeats.includes(seatKeys[index]!)) {
         this.tweens.add({
@@ -100,20 +135,34 @@ export class RoomScene extends BaseScene {
           delay: index * 40,
           ease: "Back.easeOut",
         });
+        if (!firstDraw && seat.kind === "player") playSound(this, "sfx.seat");
       }
     });
     this.shownSeats = seatKeys;
 
-    const actions: Record<LobbyAction, () => Promise<{ ok: boolean; message: string | null }>> = {
-      join: async () => {
-        const r = await this.screen.actions.join();
-        return r.ok ? { ok: true, message: null } : r;
-      },
-      leave: async () => {
-        const r = await this.screen.actions.leave();
-        return r.ok ? { ok: true, message: null } : r;
-      },
-      share: () => this.screen.actions.share(),
+    const me = this.screen.guest.getState().guest;
+    this.body.add(
+      drawNameChip(this, skin, {
+        x: cx,
+        y: SEATS_TOP + view.seats.length * (SEAT_SIZE.height + SEAT_GAP) + 10,
+        name: me?.name ?? null,
+        onRename: this.screen.rename,
+      })
+    );
+
+    const { actions } = this.screen;
+    const quiet = (run: () => Promise<ActionResult>, onDone?: () => void) => async () => {
+      const result = await run();
+      if (!result.ok) return { message: result.message };
+      onDone?.();
+      return { message: null };
+    };
+    const handlers: Record<LobbyAction, () => Promise<{ message: string | null }>> = {
+      join: quiet(actions.join),
+      leave: quiet(actions.leave),
+      start: quiet(actions.start, () => playSound(this, "sfx.start")),
+      draw: quiet(actions.drawSeats),
+      share: () => actions.share(),
     };
     buttons.forEach((button, i) => {
       const y = BASE_HEIGHT - 70 - (buttons.length - 1 - i) * 66;
@@ -124,7 +173,7 @@ export class RoomScene extends BaseScene {
           label: button.label,
           primary: button.primary,
           onPress: async () => {
-            const { message } = await actions[button.action]();
+            const { message } = await handlers[button.action]();
             if (message) showToast(this, skin, message);
           },
         })

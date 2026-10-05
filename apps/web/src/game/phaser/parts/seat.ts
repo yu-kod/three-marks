@@ -1,6 +1,7 @@
 import type * as Phaser from "phaser";
 import type { Seat } from "@/game/state/lobby";
 import type { Skin } from "@/game/skin/skin";
+import { playSound } from "./sound";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
 
@@ -10,7 +11,13 @@ export const SEAT_SIZE = { width: 340, height: 60 };
 export function drawSeat(
   scene: Phaser.Scene,
   skin: Skin,
-  { x, y, seat, index }: { x: number; y: number; seat: Seat; index: number }
+  {
+    x,
+    y,
+    seat,
+    index,
+    onMoveUp,
+  }: { x: number; y: number; seat: Seat; index: number; onMoveUp?: () => void }
 ): Phaser.GameObjects.Container {
   const key = seat.kind === "cpu" ? "seat.cpu" : seat.me ? "seat.me" : "seat.player";
   const box = { x: 0, y: 0, ...SEAT_SIZE };
@@ -46,18 +53,31 @@ export function drawSeat(
       }
     );
     // 長い名前はホストの印に重ならないよう縮める
-    const room = SEAT_SIZE.width - 58 - (seat.host ? 96 : 20);
+    const room = SEAT_SIZE.width - 58 - (seat.host ? 96 : 20) - (onMoveUp ? 44 : 0);
     parts.push(name.setScale(Math.min(1, room / name.width)));
     if (seat.host) {
       parts.push(
         placeVisual(scene, "badge.host", skin.slots["badge.host"], {
-          x: SEAT_SIZE.width / 2 - 44,
+          x: SEAT_SIZE.width / 2 - (onMoveUp ? 88 : 44),
           y: 0,
           width: 56,
           height: 22,
         })
       );
     }
+  }
+  if (onMoveUp) {
+    const up = placeVisual(scene, "icon.up", skin.slots["icon.up"], {
+      x: SEAT_SIZE.width / 2 - 28,
+      y: 0,
+      width: 36,
+      height: 36,
+    }) as Phaser.GameObjects.Image;
+    up.setInteractive({ useHandCursor: true }).on("pointerup", () => {
+      playSound(scene, "sfx.tap");
+      onMoveUp();
+    });
+    parts.push(up);
   }
   return scene.add.container(x, y, parts);
 }
