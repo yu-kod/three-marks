@@ -43,8 +43,29 @@ describe("parseSkin", () => {
     const { sounds, ...manifest } = buildManifest();
     const { "sfx.flip": _missing, ...rest } = sounds;
 
-    expect(SOUND_KEYS).toEqual(["sfx.tap", "sfx.seat", "sfx.flip", "sfx.start"]);
+    expect(SOUND_KEYS).toEqual([
+      "sfx.tap",
+      "sfx.seat",
+      "sfx.flip",
+      "sfx.start",
+      "sfx.select",
+      "sfx.throw",
+      "sfx.hit",
+      "sfx.miss",
+      "sfx.open",
+      "sfx.award",
+      "sfx.turn",
+      "bgm.main",
+    ]);
     expect(() => parseSkin({ ...manifest, sounds: rest }, URL_)).toThrow("sfx.flip");
+  });
+
+  it("振動の形はできごとごとにスキンが決める（決めていないできごとは振動しない）", () => {
+    const skin = parseSkin(buildManifest({ vibrations: { hit: [30], award: [40, 60, 80] } }), URL_);
+
+    expect(skin.vibrations).toEqual({ hit: [30], award: [40, 60, 80] });
+    expect(parseSkin(buildManifest(), URL_).vibrations).toEqual({});
+    expect(() => parseSkin(buildManifest({ vibrations: { boom: [10] } as never }), URL_)).toThrow();
   });
 
   it("差し込み口が1つでも欠けていたら読み込まない（どれが欠けているかを伝える）", () => {
@@ -82,6 +103,7 @@ describe("parseSkin", () => {
       "mark.2",
       "mark.3",
       "icon.turn",
+      "icon.settings",
       "board.15",
       "board.16",
       "board.17",

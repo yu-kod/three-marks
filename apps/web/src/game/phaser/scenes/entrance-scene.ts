@@ -2,6 +2,8 @@ import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
 import { drawNameChip } from "../parts/name-editor";
+import { drawSettingsButton } from "../parts/settings-panel";
+import { startBgm } from "../parts/sound";
 import { addText } from "../parts/text";
 import { showToast } from "../parts/toast";
 import { placeVisual } from "../parts/visual";
@@ -21,6 +23,8 @@ export class EntranceScene extends BaseScene {
 
   protected build() {
     const { skin, screen } = this;
+    drawSettingsButton(this, skin, { x: BASE_WIDTH - 30, y: 32 });
+    startBgm(this);
     const logo = placeVisual(this, "logo", skin.slots.logo, {
       x: BASE_WIDTH / 2,
       y: 260,

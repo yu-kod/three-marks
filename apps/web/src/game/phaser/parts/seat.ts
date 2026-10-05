@@ -1,7 +1,7 @@
 import type * as Phaser from "phaser";
 import type { Seat } from "@/game/state/lobby";
 import type { Skin } from "@/game/skin/skin";
-import { playSound } from "./sound";
+import { feedback } from "./sound";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
 
@@ -74,7 +74,7 @@ export function drawSeat(
       height: 36,
     }) as Phaser.GameObjects.Image;
     up.setInteractive({ useHandCursor: true }).on("pointerup", () => {
-      playSound(scene, "sfx.tap");
+      feedback(scene, skin, "tap");
       onMoveUp();
     });
     parts.push(up);
