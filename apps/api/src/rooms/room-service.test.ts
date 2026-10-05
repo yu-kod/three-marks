@@ -1,6 +1,12 @@
-import { ConflictError, NotFoundError, UnprocessableError } from "@app/server-core";
+import { ConflictError, ForbiddenError, NotFoundError, UnprocessableError } from "@app/server-core";
+import type { Rng } from "@three-marks/engine";
 import { describe, expect, it } from "vitest";
-import { createRoomService, ROOM_TTL_SECONDS, type RoomServiceDeps } from "./room-service.js";
+import {
+  createRoomService,
+  ROOM_TTL_SECONDS,
+  type RoomService,
+  type RoomServiceDeps,
+} from "./room-service.js";
 import { createInMemoryRoomStore } from "./room-store.js";
 
 const guest = (id: string, name: string) => ({ kind: "guest" as const, id, name });
@@ -28,6 +34,7 @@ describe("createRoom", () => {
       hostId: "g-1",
       members: [{ id: "g-1", name: "Alice" }],
       maxPlayers: 4,
+      seatDraw: null,
     });
   });
 
@@ -157,5 +164,171 @@ describe("join — 同時に参加したとき", () => {
     await service.createRoom(alice);
 
     await expect(service.join("room-1", bob)).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+describe("席（参加者の並び）", () => {
+  it("席は参加した順で、開き直しても（再接続しても）同じ席のまま", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+    await service.join("room-1", guest("g-3", "Carol"));
+
+    const room = await service.join("room-1", bob);
+
+    expect(room.members.map((m) => m.id)).toEqual(["g-1", "g-2", "g-3"]);
+  });
+});
+
+describe("leave", () => {
+  it("席を離れると参加者から外れ、後ろの人の席が1つずつ詰まる", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+    await service.join("room-1", guest("g-3", "Carol"));
+
+    const room = await service.leave("room-1", bob);
+
+    expect(room.members.map((m) => m.id)).toEqual(["g-1", "g-3"]);
+  });
+
+  it("ホストが離れたら、次に参加した人がホストになる", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+
+    await expect(service.leave("room-1", alice)).resolves.toMatchObject({
+      hostId: "g-2",
+      members: [{ id: "g-2" }],
+    });
+  });
+
+  it("全員が離れたら、次に参加した人がホストになる", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+    await service.leave("room-1", alice);
+
+    await expect(service.join("room-1", bob)).resolves.toMatchObject({
+      hostId: "g-2",
+      members: [{ id: "g-2" }],
+    });
+  });
+
+  it("参加していない人が離れても何も変わらない", async () => {
+    const { service } = setup();
+    const created = await service.createRoom(alice);
+
+    await expect(service.leave("room-1", bob)).resolves.toEqual(created);
+  });
+});
+
+describe("arrangeSeats", () => {
+  async function threePlayers() {
+    const ctx = setup();
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.join("room-1", guest("g-3", "Carol"));
+    return ctx;
+  }
+
+  it("ホストは席の並びを決められる", async () => {
+    const { service } = await threePlayers();
+
+    const room = await service.arrangeSeats("room-1", alice, ["g-3", "g-1", "g-2"]);
+
+    expect(room.members.map((m) => m.id)).toEqual(["g-3", "g-1", "g-2"]);
+  });
+
+  it("ホスト以外は ForbiddenError（他人の席は動かせない）", async () => {
+    const { service } = await threePlayers();
+
+    await expect(service.arrangeSeats("room-1", bob, ["g-3", "g-1", "g-2"])).rejects.toBeInstanceOf(
+      ForbiddenError
+    );
+  });
+
+  it.each([
+    ["足りない", ["g-1", "g-2"]],
+    ["参加していない人がいる", ["g-1", "g-2", "g-9"]],
+    ["同じ人が2回いる", ["g-1", "g-2", "g-2"]],
+  ])("並びが今の参加者とちょうど一致しない（%s）なら UnprocessableError", async (_, order) => {
+    const { service } = await threePlayers();
+
+    const result = service.arrangeSeats("room-1", alice, order);
+
+    await expect(result).rejects.toBeInstanceOf(UnprocessableError);
+    await expect(result).rejects.toMatchObject({ code: "SEATS_MISMATCH" });
+  });
+});
+
+describe("drawSeats — カードを引いて席順を決める", () => {
+  /** 引く位置を指定する乱数（engine の seating.test.ts と同じ山の並び） */
+  const picks = (...indices: number[]): Rng => {
+    let i = 0;
+    return { nextInt: () => indices[i++]! };
+  };
+
+  async function threePlayers(seatRng: Rng) {
+    const ctx = setup({ createSeatRng: () => seatRng });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.join("room-1", guest("g-3", "Carol"));
+    return ctx;
+  }
+
+  it("ホストが引くと、強い順に席が並び、誰が何を引いたかが全員に見える", async () => {
+    // Alice 15, Bob Bull, Carol 18
+    const { service } = await threePlayers(picks(0, 39, 17));
+
+    await service.drawSeats("room-1", alice);
+    const room = await service.getRoom("room-1");
+
+    expect(room.members.map((m) => m.id)).toEqual(["g-2", "g-3", "g-1"]);
+    expect(room.seatDraw).toEqual([
+      [
+        { player: "g-1", target: 15 },
+        { player: "g-2", target: "bull" },
+        { player: "g-3", target: 18 },
+      ],
+    ]);
+  });
+
+  it("引く前のルームには引いた結果が無い", async () => {
+    const { service } = setup();
+
+    await expect(service.createRoom(alice)).resolves.toMatchObject({ seatDraw: null });
+  });
+
+  it("ホスト以外は ForbiddenError", async () => {
+    const { service } = await threePlayers(picks(0, 39, 17));
+
+    await expect(service.drawSeats("room-1", bob)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it.each([
+    ["誰かが参加した", (s: RoomService) => s.join("room-1", guest("g-4", "Dave"))],
+    ["誰かが離れた", (s: RoomService) => s.leave("room-1", bob)],
+    [
+      "ホストが並べ直した",
+      (s: RoomService) => s.arrangeSeats("room-1", alice, ["g-1", "g-2", "g-3"]),
+    ],
+  ])("引いたあとで%sら、古い結果は消える（今の席順と合わなくなるため）", async (_, change) => {
+    const { service } = await threePlayers(picks(0, 39, 17));
+    await service.drawSeats("room-1", alice);
+
+    await change(service);
+
+    await expect(service.getRoom("room-1")).resolves.toMatchObject({ seatDraw: null });
+  });
+
+  it("乱数を渡さなければ、毎回違うシードで引く", async () => {
+    const { service } = setup({ createSeatRng: undefined });
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+
+    const room = await service.drawSeats("room-1", alice);
+
+    expect(room.members.map((m) => m.id).sort()).toEqual(["g-1", "g-2"]);
+    expect(room.seatDraw!.length).toBeGreaterThanOrEqual(1);
   });
 });

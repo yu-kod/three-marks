@@ -9,6 +9,7 @@ function buildRoom(overrides: Partial<RoomRecord> = {}): RoomRecord {
     members: [{ guestId: "g-1", name: "Alice", joinedAt: 1_000 }],
     createdAt: 1_000,
     expiresAt: 2_000,
+    seatDraw: null,
     version: 1,
     ...overrides,
   };
