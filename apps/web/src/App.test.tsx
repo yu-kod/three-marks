@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { returning } from "./test-utils/guest";
 import { renderWithProviders } from "./test-utils/render";
@@ -29,5 +29,15 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: "トップへ戻る" }));
 
     expect(await screen.findByRole("button", { name: "はじめる" })).toBeInTheDocument();
+  });
+
+  it("招待 URL（/r/:id）はヘッダー無しの全画面でゲーム画面を開く", async () => {
+    // ここでは通信しない。スキンが読めないときの表示で、ゲーム画面のルートに来たことを確かめる
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+
+    renderWithProviders(<App />, { route: "/r/room-1" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("画面を読み込めませんでした");
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
   });
 });

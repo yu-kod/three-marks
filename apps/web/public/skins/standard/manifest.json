@@ -1,0 +1,56 @@
+{
+  "id": "standard",
+  "name": "スタンダード",
+  "colors": {
+    "background": "#23272f",
+    "panel": "#101218",
+    "text": "#f4f5f7",
+    "muted": "#a9afbd",
+    "accent": "#d93a3a",
+    "players": ["#d93a3a", "#2f6fd6", "#e0a100", "#2fa36b"]
+  },
+  "fonts": {
+    "display": "'Barlow Semi Condensed', 'Noto Sans JP', sans-serif",
+    "body": "'Noto Sans JP', sans-serif"
+  },
+  "card": {
+    "width": 44,
+    "height": 112,
+    "radius": 4
+  },
+  "motion": {
+    "flipMs": 280,
+    "dealMs": 180,
+    "cutInMs": 1200
+  },
+  "slots": {
+    "card.face": {
+      "image": "card-face.svg"
+    },
+    "card.back": {
+      "image": "card-back.svg"
+    },
+    "glyph.15": {
+      "image": "glyphs/15.svg"
+    },
+    "glyph.16": {
+      "image": "glyphs/16.svg"
+    },
+    "glyph.17": {
+      "image": "glyphs/17.svg"
+    },
+    "glyph.18": {
+      "image": "glyphs/18.svg"
+    },
+    "glyph.19": {
+      "image": "glyphs/19.svg"
+    },
+    "glyph.20": {
+      "image": "glyphs/20.svg"
+    },
+    "glyph.bull": {
+      "image": "glyphs/bull.svg"
+    }
+  },
+  "sounds": {}
+}

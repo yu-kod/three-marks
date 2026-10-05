@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { parseSkin, SLOT_KEYS } from "./skin";
+import { buildManifest } from "@/test-utils/skin";
+
+const URL_ = "https://example.com/skins/standard/manifest.json";
+
+describe("parseSkin", () => {
+  it("絵の差し込み口は、マニフェストのある場所から URL を解決する", () => {
+    const skin = parseSkin(
+      buildManifest({
+        slots: { "glyph.20": { image: "glyphs/20.svg" } },
+        sounds: { flip: "sfx/flip.mp3" },
+      }),
+      URL_
+    );
+
+    expect(skin.slots["glyph.20"]).toEqual({
+      image: "https://example.com/skins/standard/glyphs/20.svg",
+    });
+    expect(skin.assets.sounds).toEqual({ flip: "https://example.com/skins/standard/sfx/flip.mp3" });
+  });
+
+  it("文字や図形も差し込める。色は Phaser が使う数値にする", () => {
+    const skin = parseSkin(
+      buildManifest({
+        colors: { background: "#23272f" },
+        slots: {
+          "glyph.15": { text: "15", color: "#101218", size: 0.5 },
+          "card.face": { rect: "#f4f5f7" },
+          "glyph.bull": { rings: ["#2fa36b", "#d93a3a"] },
+        },
+      }),
+      URL_
+    );
+
+    expect(skin.colors.background).toBe(0x23272f);
+    expect(skin.slots["glyph.15"]).toEqual({ text: "15", color: 0x101218, size: 0.5 });
+    expect(skin.slots["card.face"]).toEqual({ rect: 0xf4f5f7 });
+    expect(skin.slots["glyph.bull"]).toEqual({ rings: [0x2fa36b, 0xd93a3a] });
+  });
+
+  it("差し込み口が1つでも欠けていたら読み込まない（どれが欠けているかを伝える）", () => {
+    const { slots, ...manifest } = buildManifest();
+    const { "glyph.bull": _missing, ...rest } = slots;
+
+    expect(() => parseSkin({ ...manifest, slots: rest }, URL_)).toThrow("glyph.bull");
+  });
+
+  it("形が違うマニフェストは読み込まない", () => {
+    expect(() => parseSkin({ ...buildManifest(), colors: { background: "red" } }, URL_)).toThrow();
+  });
+
+  it("差し込み口はカードの表・裏と、15〜20・ブルの印", () => {
+    expect(SLOT_KEYS).toEqual([
+      "card.face",
+      "card.back",
+      "glyph.15",
+      "glyph.16",
+      "glyph.17",
+      "glyph.18",
+      "glyph.19",
+      "glyph.20",
+      "glyph.bull",
+    ]);
+  });
+});
