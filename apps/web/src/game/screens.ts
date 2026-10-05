@@ -19,6 +19,8 @@ export type Screen =
       kind: "room";
       guest: GuestSession;
       store: TableStore;
+      /** 入口へ戻る */
+      home: () => void;
       rename: (name: string) => Promise<ActionResult>;
       actions: {
         join: () => Promise<ActionResult>;
@@ -28,5 +30,8 @@ export type Screen =
         start: () => Promise<ActionResult>;
         drawSeats: () => Promise<ActionResult>;
         arrange: (order: string[]) => Promise<ActionResult>;
+        /** ここからはゲーム中の手番の人 */
+        declare: (aims: number[]) => Promise<ActionResult>;
+        flip: (count: number | "all") => Promise<ActionResult>;
       };
     };

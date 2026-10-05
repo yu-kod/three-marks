@@ -31,6 +31,20 @@ export const SLOT_KEYS = [
   "toast",
   /** ホストが席をひとつ前へ動かすボタン */
   "icon.up",
+  /** 得点表のマーク。1つ（/）・2つ（X）・3つでオープン（Ⓧ） */
+  "mark.1",
+  "mark.2",
+  "mark.3",
+  /** 手番の人の印 */
+  "icon.turn",
+  /** 得点表の真ん中の数字（暗い得点表の上に置く。カードの数字とは別） */
+  "board.15",
+  "board.16",
+  "board.17",
+  "board.18",
+  "board.19",
+  "board.20",
+  "board.bull",
 ] as const;
 export type SlotKey = (typeof SLOT_KEYS)[number];
 

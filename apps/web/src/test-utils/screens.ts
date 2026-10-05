@@ -27,6 +27,7 @@ export const roomScreen = (): Screen => ({
     subscribe: () => () => {},
   }),
   rename: vi.fn(async () => ({ ok: true as const })),
+  home: vi.fn(),
   actions: {
     join: vi.fn(async () => ({ ok: true as const })),
     leave: vi.fn(async () => ({ ok: true as const })),
@@ -34,5 +35,7 @@ export const roomScreen = (): Screen => ({
     start: vi.fn(async () => ({ ok: true as const })),
     drawSeats: vi.fn(async () => ({ ok: true as const })),
     arrange: vi.fn(async () => ({ ok: true as const })),
+    declare: vi.fn(async () => ({ ok: true as const })),
+    flip: vi.fn(async () => ({ ok: true as const })),
   },
 });
