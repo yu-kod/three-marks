@@ -45,6 +45,13 @@ export const SLOT_KEYS = [
   "board.19",
   "board.20",
   "board.bull",
+  /** アワードのカットインの絵（格ごと。docs/spec.md 解釈メモ16） */
+  "cutin.GAME_SHOT",
+  "cutin.THREE_IN_A_BED",
+  "cutin.DOUBLE_BULL",
+  "cutin.THREE_MARKS",
+  "cutin.DOUBLE_OPEN",
+  "cutin.OPEN",
 ] as const;
 export type SlotKey = (typeof SLOT_KEYS)[number];
 

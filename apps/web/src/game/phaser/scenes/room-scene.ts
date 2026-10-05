@@ -3,6 +3,7 @@ import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
 import { drawCard } from "../parts/card";
+import { playCutIn } from "../parts/cut-in";
 import { FlipStage } from "../parts/flip-stage";
 import {
   BOARD_TOP,
@@ -29,6 +30,7 @@ import {
 } from "@/game/state/lobby";
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
+import { cutInFor } from "@/game/state/cut-in";
 import { roomModel } from "@/game/state/room-model";
 import { latestThrowOf } from "@/game/state/squeeze";
 import type { TableState } from "@/game/state/table-store";
@@ -111,8 +113,13 @@ export class RoomScene extends BaseScene {
       const game = (this.screen.store.getState() as Extract<TableState, { status: "ready" }>).game!;
       const me = this.me()!;
       const seat = game.players.findIndex((p) => p.id === me);
-      await this.stage.finish(latestThrowOf(game, me), (target) => boardCell(target, seat));
-      this.stage = null;
+      try {
+        await this.stage.finish(latestThrowOf(game, me), (target) => boardCell(target, seat));
+      } finally {
+        // 舞台の演出が途中で失敗しても、閉じて再生を続ける（画面が止まらないように）
+        this.stage.close();
+        this.stage = null;
+      }
     }
     const { motion } = this.skin;
     const hold: Record<ReplayFrame["kind"], number> = {
@@ -125,6 +132,12 @@ export class RoomScene extends BaseScene {
       const state = this.screen.store.getState() as Extract<TableState, { status: "ready" }>;
       this.draw({ ...state, game: frame.view });
       if (frame.kind === "settle") playSound(this, "sfx.seat");
+      // 照合した投げにアワードがあれば、カットインを出し終えてから次へ
+      if (frame.record) {
+        const who = state.room.members.find((m) => m.id === frame.record!.player)?.name ?? "";
+        const cut = cutInFor(frame.record.awards, who, frame.record.player === this.me());
+        if (cut) await playCutIn(this, this.skin, cut);
+      }
       if (frame.banner) this.showBanner(frame.banner);
       await new Promise<void>((resolve) => this.time.delayedCall(hold[frame.kind], resolve));
     }

@@ -89,6 +89,12 @@ describe("parseSkin", () => {
       "board.19",
       "board.20",
       "board.bull",
+      "cutin.GAME_SHOT",
+      "cutin.THREE_IN_A_BED",
+      "cutin.DOUBLE_BULL",
+      "cutin.THREE_MARKS",
+      "cutin.DOUBLE_OPEN",
+      "cutin.OPEN",
     ]);
   });
 });
