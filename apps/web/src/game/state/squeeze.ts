@@ -86,3 +86,16 @@ export function latestThrowOf(
     [...view.lastRoundThrows, ...view.throws].filter((t) => t.player === player).at(-1) ?? null
   );
 }
+
+export type PeelEdge = "bottom" | "top" | "left" | "right";
+
+/**
+ * 札のどの端からめくれるか。指を動かした向き（縦横の大きいほう）の反対側の端から持ち上がる。
+ * 上へ引けば下の端から、右へ引けば左の端から。まだ動かしていなければ下から。
+ */
+export function peelFrom(start: Point, current: Point): PeelEdge {
+  const dx = current.x - start.x;
+  const dy = current.y - start.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "left" : "right";
+  return dy > 0 ? "top" : "bottom";
+}

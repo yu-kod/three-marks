@@ -3,6 +3,7 @@ import type { ThrowRecord } from "@three-marks/engine";
 import {
   classifyGesture,
   latestThrowOf,
+  peelFrom,
   peelProgress,
   REVEAL_AT,
   slotFaces,
@@ -112,5 +113,18 @@ describe("slotOrder", () => {
   it("i 枚目にめくれた札が入る置き場所（触れた順、残りは空いている左から）", () => {
     expect(slotOrder(5, 5, [3, 0])).toEqual([3, 0, 1, 2, 4]);
     expect(slotOrder(3, 1, [])).toEqual([0]);
+  });
+});
+
+describe("peelFrom", () => {
+  it("指を動かした向きの反対側の端からめくれる（上へ引けば下の端から、右へ引けば左の端から）", () => {
+    expect(peelFrom(at(0, 100, 0), at(5, 40, 0))).toBe("bottom");
+    expect(peelFrom(at(0, 0, 0), at(-4, 50, 0))).toBe("top");
+    expect(peelFrom(at(0, 0, 0), at(60, 10, 0))).toBe("left");
+    expect(peelFrom(at(60, 0, 0), at(0, -10, 0))).toBe("right");
+  });
+
+  it("まだ動かしていなければ、下の端から", () => {
+    expect(peelFrom(at(10, 10, 0), at(10, 10, 0))).toBe("bottom");
   });
 });

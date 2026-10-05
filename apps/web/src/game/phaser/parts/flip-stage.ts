@@ -7,10 +7,12 @@ import { hitPairs } from "@/game/state/hit-pairs";
 import type { Target, ThrowRecord } from "@three-marks/engine";
 import {
   classifyGesture,
+  peelFrom,
   peelProgress,
   REVEAL_AT,
   slotFaces,
   slotOrder,
+  type PeelEdge,
   type Point,
   type Slot,
 } from "@/game/state/squeeze";
@@ -32,6 +34,10 @@ type SlotView = {
   revealed: boolean;
   /** めくりきる操作をしたが、中身がまだ届いていない（届いたらめくる） */
   waiting: boolean;
+  /** どの端から持ち上がっているか */
+  edge: PeelEdge;
+  /** 持ち上がった部分の裏（折り返し）。めくっている間だけ描く */
+  flap: Phaser.GameObjects.Graphics;
 };
 
 /**
@@ -119,6 +125,7 @@ export class FlipStage {
         }
       ) as Phaser.GameObjects.Image;
       this.layer.add(back);
+      const flapIndex = this.slots.length;
       this.slots.push({
         slot: { x, y, width: w, height: h },
         back,
@@ -126,7 +133,10 @@ export class FlipStage {
         progress: 0,
         revealed: false,
         waiting: false,
+        edge: "bottom",
+        flap: scene.add.graphics(),
       });
+      this.layer.add(this.slots[flapIndex]!.flap);
       // 山札から1枚ずつ配る
       back
         .setPosition(56, 340)
@@ -152,8 +162,17 @@ export class FlipStage {
     }
 
     shade.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => this.down(p));
-    shade.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => this.move(p));
-    shade.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => this.up(p));
+    // 動き・離しは場面全体で受ける（マウスで勢いよく払うと、キャンバスの外で離すことがある）
+    const move = (p: Phaser.Input.Pointer) => this.move(p);
+    const up = (p: Phaser.Input.Pointer) => this.up(p);
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, move);
+    scene.input.on(Phaser.Input.Events.POINTER_UP, up);
+    scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, up);
+    this.layer.once(Phaser.GameObjects.Events.DESTROY, () => {
+      scene.input.off(Phaser.Input.Events.POINTER_MOVE, move);
+      scene.input.off(Phaser.Input.Events.POINTER_UP, up);
+      scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, up);
+    });
   }
 
   private updateDeckLabel() {
@@ -185,16 +204,18 @@ export class FlipStage {
   }
 
   private move(p: Phaser.Input.Pointer) {
-    if (!p.isDown) return;
+    if (this.closed || !p.isDown || this.points.length === 0) return;
     // 札の外から始まった横の払いも読めるよう、指の跡はいつも残す
     this.points.push(this.pointOf(p));
     if (this.active === null) return;
     const view = this.slots[this.active]!;
+    view.edge = peelFrom(this.points[0]!, this.points.at(-1)!);
     const progress = peelProgress(this.points[0]!, this.points.at(-1)!, view.slot.height);
     this.setProgress(this.active, this.faces[this.active] ? progress : Math.min(progress, PEEK));
   }
 
   private up(p: Phaser.Input.Pointer) {
+    if (this.closed || this.points.length === 0) return;
     this.points.push(this.pointOf(p));
     const gesture = classifyGesture(
       this.points,
@@ -202,6 +223,7 @@ export class FlipStage {
     );
     const slot = this.active;
     this.active = null;
+    this.points = [];
     if (gesture?.kind === "sweep") {
       this.flipAll();
       return;
@@ -258,13 +280,44 @@ export class FlipStage {
     });
   }
 
-  /** 伏せた札を下から絞る（裏の絵を上から切り取って、下の表を見せる） */
+  /**
+   * 伏せた札を、持ち上がっている端から絞る。裏の絵のうち持ち上がった分を切り取って下の表を見せ、
+   * 折り目に持ち上がった部分の裏（折り返し）を重ねて、反り返って見えるようにする。
+   */
   private setProgress(slot: number, progress: number) {
     const view = this.slots[slot]!;
     view.progress = progress;
-    const frame = view.back.frame;
-    const keep = frame.realHeight * (1 - progress);
-    view.back.setCrop(0, 0, frame.realWidth, keep);
+    const { realWidth: W, realHeight: H } = view.back.frame;
+    const p = progress;
+    const crop = {
+      bottom: [0, 0, W, H * (1 - p)],
+      top: [0, H * p, W, H * (1 - p)],
+      left: [W * p, 0, W * (1 - p), H],
+      right: [0, 0, W * (1 - p), H],
+    }[view.edge] as [number, number, number, number];
+    view.back.setCrop(...crop);
+
+    // 折り返し：折り目から、持ち上がった分の一部が裏側を見せて重なる
+    const { x, y, width: w, height: h } = view.slot;
+    const flap = view.flap.clear();
+    if (p <= 0 || p >= 1) return;
+    const fold = Math.min(p, 1 - p) * 0.7;
+    const left = x - w / 2;
+    const top = y - h / 2;
+    const rect = {
+      bottom: [left, top + h * (1 - p) - h * fold, w, h * fold],
+      top: [left, top + h * p, w, h * fold],
+      left: [left + w * p, top, w * fold, h],
+      right: [left + w * (1 - p) - w * fold, top, w * fold, h],
+    }[view.edge] as [number, number, number, number];
+    flap.fillStyle(this.skin.colors.text, 0.92).fillRect(...rect);
+    // 折り目の影
+    flap.fillStyle(0x000000, 0.35);
+    const [rx, ry, rw, rh] = rect;
+    if (view.edge === "bottom") flap.fillRect(rx, ry - 3, rw, 3);
+    else if (view.edge === "top") flap.fillRect(rx, ry + rh, rw, 3);
+    else if (view.edge === "left") flap.fillRect(rx + rw, ry, 3, rh);
+    else flap.fillRect(rx - 3, ry, 3, rh);
   }
 
   /** 届いた中身を置き場所に入れる。触れずにめくれた札（一気に・ほかの画面）はそのままめくる */
