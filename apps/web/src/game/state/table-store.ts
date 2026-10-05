@@ -69,6 +69,9 @@ export function createTableStore({ roomId, api, subscribe }: TableStoreOptions) 
       };
     },
 
+    /** 今すぐ取り直す。自分の操作のあと、知らせを待たずに結果を出すときに呼ぶ */
+    refresh,
+
     /** 取り込みを始める。止めるときは戻り値を呼ぶ */
     start() {
       refresh();
