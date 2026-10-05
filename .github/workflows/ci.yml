@@ -91,60 +91,53 @@ jobs:
 
   # infra を変えた PR に、本番に対する terraform plan の差分をコメントする。
   # 読み取り専用の plan ロールを使う（PR のジョブからだけ引き受けられる。infra/bootstrap）。
-  # ロールが未登録（テンプレート自身、AWS の準備前、Secrets を読めない Dependabot の PR）なら飛ばす。
+  # テンプレート自身（デプロイしない）、Dependabot とフォークの PR（OIDC トークンが出ない）は飛ばす。
   plan:
     needs: changes
-    if: needs.changes.outputs.infra == 'true'
+    if: >-
+      needs.changes.outputs.infra == 'true' &&
+      !github.event.repository.is_template &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
       pull-requests: write
-    env:
-      AWS_PLAN_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
     steps:
-      - name: Check setup
-        id: setup
-        run: |
-          if [ -z "$AWS_PLAN_ROLE_ARN" ]; then
-            echo "::notice::AWS_PLAN_ROLE_ARN が無いので terraform plan を飛ばす（docs/deploy.md）"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v7
-        if: steps.setup.outputs.enabled == 'true'
+
+      - name: Configure AWS credentials
+        id: aws
+        uses: ./.github/actions/aws-login
+        with:
+          role: plan
+          role-arn: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          required: "false"
 
       - uses: actions/setup-node@v7
-        if: steps.setup.outputs.enabled == 'true'
+        if: steps.aws.outputs.configured == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
 
       # archive_file が apps/api/dist を固めるので、plan の前にビルドする
       - name: Build Lambda
-        if: steps.setup.outputs.enabled == 'true'
+        if: steps.aws.outputs.configured == 'true'
         run: npm ci && npm run build:lambda
 
       - uses: hashicorp/setup-terraform@v4
-        if: steps.setup.outputs.enabled == 'true'
+        if: steps.aws.outputs.configured == 'true'
         with:
           terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@v6
-        if: steps.setup.outputs.enabled == 'true'
-        with:
-          role-to-assume: ${{ env.AWS_PLAN_ROLE_ARN }}
-          aws-region: ap-northeast-1
-
       - name: Terraform init
-        if: steps.setup.outputs.enabled == 'true'
+        if: steps.aws.outputs.configured == 'true'
         uses: ./.github/actions/terraform-init
 
       # 読み取り専用のロールなのでロックは取らない（-lock=false）
       - name: Terraform plan
-        if: steps.setup.outputs.enabled == 'true'
+        if: steps.aws.outputs.configured == 'true'
         working-directory: infra
         env:
           PROJECT_NAME: ${{ github.event.repository.name }}
@@ -154,39 +147,10 @@ jobs:
           terraform show -no-color tfplan > plan.txt
 
       - name: Comment plan on PR
-        if: steps.setup.outputs.enabled == 'true'
-        uses: actions/github-script@v8
+        if: steps.aws.outputs.configured == 'true'
+        uses: ./.github/actions/terraform-plan-comment
         with:
-          script: |
-            const fs = require("fs");
-            const plan = fs.readFileSync("infra/plan.txt", "utf8");
-            const summary =
-              plan.match(/^Plan: .*$/m)?.[0] ??
-              (plan.includes("No changes.") ? "No changes." : "（要約が見つからない）");
-            const limit = 60000;
-            const body = [
-              "<!-- terraform-plan -->",
-              `### terraform plan（本番）: ${summary}`,
-              "<details><summary>差分</summary>",
-              "",
-              "```",
-              plan.length > limit ? plan.slice(0, limit) + "\n…（長いので省略）" : plan,
-              "```",
-              "</details>",
-            ].join("\n");
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-            });
-            const previous = comments.find((c) => c.body?.startsWith("<!-- terraform-plan -->"));
-            if (previous) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+          plan-file: infra/plan.txt
 
   # 必須ステータスチェックはこの ci ジョブ1つだけを指定する。
   #
