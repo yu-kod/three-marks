@@ -1,0 +1,64 @@
+import type { Screen } from "../../screens";
+import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
+import { drawButton } from "../parts/button";
+import { addText } from "../parts/text";
+import { showToast } from "../parts/toast";
+import { placeVisual } from "../parts/visual";
+import { BaseScene } from "./base-scene";
+import type { Skin } from "@/game/skin/skin";
+
+type Entrance = Extract<Screen, { kind: "entrance" }>;
+
+/** 入口。ロゴと「ルームを作る」 */
+export class EntranceScene extends BaseScene {
+  constructor(
+    skin: Skin,
+    private readonly screen: Entrance
+  ) {
+    super("entrance", skin);
+  }
+
+  protected build() {
+    const { skin, screen } = this;
+    const logo = placeVisual(this, "logo", skin.slots.logo, {
+      x: BASE_WIDTH / 2,
+      y: 260,
+      width: 320,
+      height: 130,
+    }) as Phaser.GameObjects.Image;
+    this.tweens.add({
+      targets: logo,
+      y: { from: 230, to: 260 },
+      alpha: { from: 0, to: 1 },
+      duration: 600,
+      ease: "Back.easeOut",
+    });
+
+    addText(this, skin, BASE_WIDTH / 2, 360, "ダーツのクリケットを、カードで", {
+      size: 15,
+      color: "muted",
+    });
+
+    const name = addText(this, skin, BASE_WIDTH / 2, BASE_HEIGHT - 190, "", {
+      size: 14,
+      color: "muted",
+    });
+    const showName = () => {
+      const { guest } = screen.guest.getState();
+      name.setText(guest ? `${guest.name} として遊びます` : "名前は入らない。すぐ始められます");
+    };
+    showName();
+    this.onShutdown(screen.guest.subscribe(showName));
+
+    drawButton(this, skin, {
+      x: BASE_WIDTH / 2,
+      y: BASE_HEIGHT - 140,
+      label: "ルームを作る",
+      primary: true,
+      onPress: async () => {
+        const result = await screen.createRoom();
+        if (!result.ok) showToast(this, skin, result.message);
+      },
+    });
+  }
+}

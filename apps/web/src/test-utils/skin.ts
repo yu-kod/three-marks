@@ -20,7 +20,7 @@ export function buildManifest(overrides: Overrides = {}): SkinManifest {
     },
     fonts: { display: "'Barlow Semi Condensed', sans-serif", body: "'Noto Sans JP', sans-serif" },
     card: { width: 44, height: 112, radius: 4 },
-    motion: { flipMs: 280, dealMs: 180, cutInMs: 1200 },
+    motion: { tapMs: 90, flipMs: 280, dealMs: 180, cutInMs: 1200 },
     slots: Object.fromEntries(
       SLOT_KEYS.map((key) => [key, { text: key, color: "#101218", size: 0.5 }])
     ) as SkinManifest["slots"],

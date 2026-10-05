@@ -19,6 +19,7 @@
     "radius": 4
   },
   "motion": {
+    "tapMs": 90,
     "flipMs": 280,
     "dealMs": 180,
     "cutInMs": 1200
@@ -50,6 +51,30 @@
     },
     "glyph.bull": {
       "image": "glyphs/bull.svg"
+    },
+    "logo": {
+      "image": "logo.svg"
+    },
+    "button.primary": {
+      "image": "button-primary.svg"
+    },
+    "button.secondary": {
+      "image": "button-secondary.svg"
+    },
+    "seat.player": {
+      "image": "seat-player.svg"
+    },
+    "seat.me": {
+      "image": "seat-me.svg"
+    },
+    "seat.cpu": {
+      "image": "seat-cpu.svg"
+    },
+    "badge.host": {
+      "image": "badge-host.svg"
+    },
+    "toast": {
+      "image": "toast.svg"
     }
   },
   "sounds": {}

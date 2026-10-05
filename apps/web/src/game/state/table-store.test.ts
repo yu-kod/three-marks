@@ -189,4 +189,23 @@ describe("createTableStore", () => {
 
     expect(store.getState()).toMatchObject({ status: "ready" });
   });
+
+  it("refresh() で今すぐ取り直す（自分の操作の結果を、知らせを待たずに出す）", async () => {
+    const getRoom = vi
+      .fn<TableApi["getRoom"]>()
+      .mockResolvedValueOnce(buildRoom())
+      .mockResolvedValueOnce(buildRoom({ hostId: "next" }));
+    const store = createTableStore({
+      roomId: "r1",
+      api: fakeApi({ getRoom }),
+      subscribe: fakeUpdates().subscribe,
+    });
+
+    store.start();
+    await flush();
+    store.refresh();
+    await flush();
+
+    expect(store.getState()).toMatchObject({ room: { hostId: "next" } });
+  });
 });

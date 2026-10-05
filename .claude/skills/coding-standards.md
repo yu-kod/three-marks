@@ -53,7 +53,8 @@ triggers:
   渡された値を Phaser の部品に写すコード（シーン・パーツ・Phaser の設定）だけ
 - 分岐・計算・文言・状態の組み立て・操作の判定・演出のきっかけは `src/game/phaser/` の外
   （`src/game/state/` など）に純粋関数で書き、100% テストする。Phaser 側で `if` が増えてきたら、外へ出すサイン
-- Phaser は `TableCanvas` の `mount` から動的 import する。React 側のテストは `mount` を差し替えて書く
+- Phaser は `GameCanvas` の `mount` から動的 import する。React 側のテストは `mount` を差し替えて書く
+- Phaser に渡すのは `Screen`（`src/game/screens.ts`）：描く状態と、ボタンから呼ぶ操作。通信・分岐・エラーの言葉づくりは渡す側（`features/`）で済ませ、Phaser は結果を出すだけ
 - **パーツは自分で絵を描かない。** 画面に出るものごとにスキンの「差し込み口」（`SLOT_KEYS`）を決め、
   パーツは名前で取り出して置くだけにする。差し込み口の中身は絵（image）が基本で、文字（text）や
   単純な図形（rect / rings）も入れられる。同梱スキンはデザインした絵を使う（`bundled-skins.test.ts` で確かめる）

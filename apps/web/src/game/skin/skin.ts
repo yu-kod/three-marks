@@ -16,6 +16,19 @@ export const SLOT_KEYS = [
   "glyph.19",
   "glyph.20",
   "glyph.bull",
+  /** 入口のロゴ */
+  "logo",
+  /** ボタンの地。primary は一番押してほしいもの、secondary はそれ以外 */
+  "button.primary",
+  "button.secondary",
+  /** 待合室の席の札。人・自分・空き（CPU が入る） */
+  "seat.player",
+  "seat.me",
+  "seat.cpu",
+  /** ホストの印 */
+  "badge.host",
+  /** 一言のお知らせの地 */
+  "toast",
 ] as const;
 export type SlotKey = (typeof SLOT_KEYS)[number];
 
@@ -71,6 +84,8 @@ const manifestSchema = z.object({
   }),
   /** 動きの時間（ミリ秒） */
   motion: z.object({
+    /** ボタンを押したときの沈み */
+    tapMs: z.number().nonnegative(),
     flipMs: z.number().nonnegative(),
     dealMs: z.number().nonnegative(),
     cutInMs: z.number().nonnegative(),

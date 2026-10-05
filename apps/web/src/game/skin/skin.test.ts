@@ -50,7 +50,7 @@ describe("parseSkin", () => {
     expect(() => parseSkin({ ...buildManifest(), colors: { background: "red" } }, URL_)).toThrow();
   });
 
-  it("差し込み口はカードの表・裏と、15〜20・ブルの印", () => {
+  it("差し込み口は、カード・数字とブルの印・入口と待合室の部品", () => {
     expect(SLOT_KEYS).toEqual([
       "card.face",
       "card.back",
@@ -61,6 +61,14 @@ describe("parseSkin", () => {
       "glyph.19",
       "glyph.20",
       "glyph.bull",
+      "logo",
+      "button.primary",
+      "button.secondary",
+      "seat.player",
+      "seat.me",
+      "seat.cpu",
+      "badge.host",
+      "toast",
     ]);
   });
 });
