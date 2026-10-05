@@ -80,6 +80,19 @@ describe("resolveThrow — ワイルド（4.3-2, 3）", () => {
     expect(result.wildHits).toContainEqual({ aim: 15, wild: 16 });
   });
 
+  it("マークの数が同じになるなら、大きい数字の狙いに充てる（解釈メモ4）", () => {
+    const result = resolve([17, 18], [20, 15, 15, 15, 15], { opened: new Set([20]) });
+
+    expect(result.wildHits).toEqual([{ aim: 18, wild: 20 }]);
+  });
+
+  it("同じ数字を重ねて狙ったときも、大きい数字の狙いを先に当たりにする（その場でオープンになりうる）", () => {
+    // 18 が1枚命中、残りの 18 と 17 のうち、ワイルドは 18 へ → 18 に2マーク
+    const result = resolve([18, 18, 17], [18, 20, 15, 15, 15], { opened: new Set([20]) });
+
+    expect(result).toEqual({ hits: [18], wildHits: [{ aim: 18, wild: 20 }] });
+  });
+
   it("通常の命中で当たった狙いにはワイルドを充てない（解釈メモ1）", () => {
     const result = resolve([17, 15, 16], [17, 20, 18, 18, 18], { opened: new Set([20]) });
 
