@@ -20,12 +20,13 @@ describe("createGame（3章 準備・4.1 配る）", () => {
   it("41枚をシャッフルし、スタートプレイヤーから時計回りに1枚ずつ5枚配る", () => {
     const game = createGame(["a", "b", "c", "d"], noShuffle);
 
-    // スタートは d。d → a → b → c の順に1枚ずつ
+    // スタートは d。d → a → b → c の順に1枚ずつ。
+    // noShuffle では id の振り直しも並べ替えないので、id は 1000 + 山札の何枚目か
     expect(game.startIndex).toBe(3);
-    expect(ids(game.hands.d!)).toEqual([0, 4, 8, 12, 16]);
-    expect(ids(game.hands.a!)).toEqual([1, 5, 9, 13, 17]);
-    expect(ids(game.hands.c!)).toEqual([3, 7, 11, 15, 19]);
-    expect(ids(game.deck)).toEqual(Array.from({ length: 21 }, (_, i) => 20 + i));
+    expect(ids(game.hands.d!)).toEqual([1000, 1004, 1008, 1012, 1016]);
+    expect(ids(game.hands.a!)).toEqual([1001, 1005, 1009, 1013, 1017]);
+    expect(ids(game.hands.c!)).toEqual([1003, 1007, 1011, 1015, 1019]);
+    expect(ids(game.deck)).toEqual(Array.from({ length: 21 }, (_, i) => 1020 + i));
   });
 
   it("デッキは数字ごとに 15〜20 が6枚、Bull が5枚", () => {
@@ -241,11 +242,14 @@ describe("ラウンドの終わり（4.4 回収）", () => {
 
     const next = playRound(start);
 
-    // スタートは左隣の a へ。a から時計回りに配る
+    // スタートは左隣の a へ。a から時計回りに配る。
+    // id は配り直しで 2000 + 山札の何枚目か（noShuffle）に振り直る。数字はカットした山のまま
+    const targets = (cards: Card[]) => cards.map((c) => c.target);
     expect(next.startIndex).toBe(0);
-    expect(ids(next.hands.a!)).toEqual(ids([0, 4, 8, 12, 16].map((i) => cut[i]!)));
-    expect(ids(next.hands.d!)).toEqual(ids([3, 7, 11, 15, 19].map((i) => cut[i]!)));
-    expect(ids(next.deck)).toEqual(ids(cut.slice(20)));
+    expect(targets(next.hands.a!)).toEqual(targets([0, 4, 8, 12, 16].map((i) => cut[i]!)));
+    expect(ids(next.hands.a!)).toEqual([2000, 2004, 2008, 2012, 2016]);
+    expect(targets(next.hands.d!)).toEqual(targets([3, 7, 11, 15, 19].map((i) => cut[i]!)));
+    expect(targets(next.deck)).toEqual(targets(cut.slice(20)));
     expect(collected).toHaveLength(41);
   });
 
@@ -262,10 +266,10 @@ describe("ラウンドの終わり（4.4 回収）", () => {
 
     const next = playRound(start, spy);
 
-    // 41枚の山を、1〜40枚目の後ろのどこかで分ける → 40 通り
-    expect(calls).toEqual([40]);
+    // 投げ終わって最初に引く乱数がカット位置。41枚の山を 1〜40 枚目の後ろで分ける → 40 通り
+    expect(calls[0]).toBe(40);
     // 0 を選ぶと「1枚目の後ろ」で分ける。重ねた山の1枚目（山札の残り）が一番下へ行く
-    expect(next.deck.at(-1)).toEqual(start.deck[20]);
+    expect(next.deck.at(-1)!.target).toBe(start.deck[20]!.target);
   });
 
   it("次のラウンドに進み、前のラウンドの投げは lastRoundThrows に残る", () => {
