@@ -1,7 +1,8 @@
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
-import { TABLE_NAME_ENV } from "./deps.js";
+import { createDepsFromEnv, TABLE_NAME_ENV, WS_ENDPOINT_ENV } from "./deps.js";
+import { silentNotifier } from "./realtime/notifier.js";
 
 const send = vi.hoisted(() => vi.fn());
 vi.mock("@aws-sdk/lib-dynamodb", async (importOriginal) => ({
@@ -75,5 +76,34 @@ describe("環境変数からの依存の組み立て", () => {
 
     expect(res.status).toBe(201);
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("WebSocket の通知の組み立て", () => {
+  beforeEach(() => {
+    send.mockReset();
+  });
+
+  it("テーブル名と WebSocket の管理用エンドポイントがあれば、ルームの接続へ通知する", async () => {
+    send.mockResolvedValue({ Items: [] });
+
+    const { notifier } = createDepsFromEnv({
+      [TABLE_NAME_ENV]: "three-marks-app",
+      [WS_ENDPOINT_ENV]: "https://abc.execute-api.ap-northeast-1.amazonaws.com/ws",
+    });
+    await notifier.roomChanged("room-1");
+
+    expect(notifier).not.toBe(silentNotifier);
+    expect(send.mock.calls[0]![0].input).toMatchObject({
+      TableName: "three-marks-app",
+      ExpressionAttributeValues: { ":pk": "ROOM#room-1" },
+    });
+  });
+
+  it.each([
+    ["エンドポイントが無い", { [TABLE_NAME_ENV]: "three-marks-app" }],
+    ["テーブル名も無い（ローカル開発）", {}],
+  ])("%sときは通知しない", (_, env) => {
+    expect(createDepsFromEnv(env).notifier).toBe(silentNotifier);
   });
 });

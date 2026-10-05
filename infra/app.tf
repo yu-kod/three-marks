@@ -14,18 +14,50 @@ module "api" {
 
   environment = {
     APP_TABLE_NAME = module.table.name
+    # ルームが変わったら WebSocket で知らせる（apps/api/src/deps.ts）
+    WS_MANAGEMENT_ENDPOINT = module.ws.management_endpoint
   }
 
+  policy_statements = [
+    {
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+      ]
+      Resource = [module.table.arn, "${module.table.arn}/index/*"]
+    },
+    {
+      Effect   = "Allow"
+      Action   = ["execute-api:ManageConnections"]
+      Resource = [module.ws.connections_arn]
+    },
+  ]
+}
+
+# ルームの更新を受け取る WebSocket（接続の記録だけを行う）
+module "ws" {
+  source = "./modules/websocket"
+
+  name       = "${var.project_name}-ws"
+  source_dir = "${path.module}/../apps/api/dist"
+
+  environment = {
+    APP_TABLE_NAME = module.table.name
+  }
+
+  # 接続の記録（2つの項目を一緒に書く・消す）と、接続するルームがあるかの確認
   policy_statements = [{
     Effect = "Allow"
     Action = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
-      "dynamodb:Query",
     ]
-    Resource = [module.table.arn, "${module.table.arn}/index/*"]
+    Resource = [module.table.arn]
   }]
 }
 
