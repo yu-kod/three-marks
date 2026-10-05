@@ -5,9 +5,13 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  description = "リソース名の接頭辞。テンプレートから作ったら置き換える"
+  description = "リソース名の接頭辞。GitHub Actions がリポジトリ名を渡す（-var project_name=...）"
   type        = string
-  default     = "three-marks"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,40}$", var.project_name))
+    error_message = "小文字・数字・ハイフンで、リソース名に使える長さにする。"
+  }
 }
 
 variable "domain_name" {

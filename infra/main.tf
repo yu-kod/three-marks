@@ -1,15 +1,17 @@
 terraform {
-  required_version = ">= 1.9"
+  required_version = ">= 1.10"
 
-  # infra/bootstrap で作ったバケットとロックテーブルを指す。
-  # backend には変数を使えないため直書きする。テンプレートから作ったら名前を置き換える
-  # （docs/deploy.md「テンプレートから作ったら」）。
+  # state はアカウントで1つのバケット（infra/bootstrap/create-state-bucket.sh が作る）に、
+  # リポジトリ名をキーにして置く。bucket・key・region は init のときに -backend-config で渡すので
+  # ここには書かない（テンプレートから作っても書き換え不要）。
+  #   terraform init \
+  #     -backend-config="bucket=tfstate-<アカウントID>-ap-northeast-1" \
+  #     -backend-config="key=<リポジトリ名>/terraform.tfstate" \
+  #     -backend-config="region=ap-northeast-1"
+  # ロックは S3 のネイティブロック（DynamoDB のロックテーブルは使わない）。
   backend "s3" {
-    bucket         = "three-marks-tfstate"
-    key            = "terraform.tfstate"
-    region         = "ap-northeast-1"
-    dynamodb_table = "three-marks-tfstate-lock"
-    encrypt        = true
+    encrypt      = true
+    use_lockfile = true
   }
 
   required_providers {

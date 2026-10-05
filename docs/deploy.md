@@ -1,11 +1,21 @@
 # デプロイ
 
+> AWS アカウントの準備（tfstate バケットと GitHub Actions のロール）は [yu-kod/app-template](https://github.com/yu-kod/app-template) の
+> `infra/bootstrap/` で一元管理している。three-marks は `repositories` に登録済みのリポジトリとして、
+> 下の「アプリを足す」の手順でロールを作り、Secrets を登録する。
+> 公開先は `https://three-marks.yu-web.site`（`infra/terraform.tfvars`）。
+
 ## 全体像
 
 ```
-main へ push
-  └─ .github/workflows/deploy.yml
-       ├─ OIDC で AWS のロールを引き受ける（長期アクセスキーなし）
+PR（infra/ を変えたとき）
+  └─ .github/workflows/ci.yml の plan ジョブ
+       ├─ OIDC で読み取り専用の plan ロールを引き受ける
+       └─ 本番に対する terraform plan の差分を PR にコメントする
+
+main へマージ
+  └─ .github/workflows/deploy.yml（GitHub Environment: production）
+       ├─ OIDC で deploy ロールを引き受ける（長期アクセスキーなし）
        ├─ npm run build:lambda   → apps/api/dist/lambda.js
        ├─ terraform apply        → S3 / CloudFront / API Gateway / Lambda / DynamoDB
        ├─ npm run build:web      → apps/web/dist/
@@ -13,6 +23,9 @@ main へ push
        ├─ CloudFront のキャッシュ無効化
        └─ /api/health を叩いて疎通確認
 ```
+
+デプロイの履歴と URL は、リポジトリの **Environments → production** に残る。
+テンプレートリポジトリ（`yu-kod/app-template`）自体はデプロイしない（deploy.yml は `is_template` なら何もしない）。
 
 ## 構成
 
@@ -35,143 +48,125 @@ Terraform はモジュールに分けてある（`infra/modules/`）。アプリ
 | `http-api` | Lambda + API Gateway HTTP API + IAM ロール + ロググループ |
 | `app-table` | DynamoDB の単一テーブル |
 
-テンプレートリポジトリ（`yu-kod/app-template`）自体はデプロイしない。deploy.yml は
-`is_template` のリポジトリでは何もしない。
+### state の置き場所
+
+AWS アカウントで1つのバケット `tfstate-<アカウントID>-ap-northeast-1` に、リポジトリ名をキーにして置く
+（`<リポジトリ名>/terraform.tfstate`）。バケット名はアカウント ID から決まるので、どこにも書き写さない。
+ロックは S3 のネイティブロック（`use_lockfile`）で、DynamoDB のロックテーブルは使わない。
+
+`infra/main.tf` の backend には bucket・key を書かず、GitHub Actions が init のときに渡す
+（`.github/actions/terraform-init`）。テンプレートから作っても書き換え不要。
+
+### GitHub Actions のロール
+
+リポジトリごとに2つ。`infra/bootstrap/` が作る。
+
+| ロール | Secret | 引き受けられるジョブ | 権限 |
+|---|---|---|---|
+| `gha-deploy-<repo>` | `AWS_ROLE_ARN` | production 環境のジョブ（deploy.yml）だけ | AdministratorAccess（apply 用。意図的な妥協） |
+| `gha-plan-<repo>` | `AWS_PLAN_ROLE_ARN` | PR のジョブだけ | ReadOnlyAccess（plan 用） |
+
+PR のジョブは本番を書き換えられない。フォークからの PR には GitHub が OIDC トークンを出さない。
 
 ---
 
-## 初回だけ必要な作業
+## AWS アカウントの準備（アカウントにつき1回）
 
-### 1. ブートストラップ（PC 不要）
-
-tfstate の置き場所と、GitHub Actions が引き受けるロールを作る。**AWS マネジメントコンソールの CloudShell だけで完結する。**
-
+tfstate のバケットと、GitHub Actions 用のロールを作る。**AWS マネジメントコンソールの CloudShell だけで完結する。**
 CloudShell はコンソールにログインした権限がそのまま使われるため、アクセスキーの発行も `aws configure` も不要。
 
-#### 1-1. アカウントを確認する
+すでに準備済みのアカウントにアプリを足すだけなら、次の「アプリを足す」へ。
 
-**最初に必ず確認する。** 会社用など別のアカウントにログインしたまま apply すると、そこにリソースが作られてしまう。
+### 1. アカウントを確認する
+
+**最初に必ず確認する。** 別のアカウントにログインしたまま進めると、そこにリソースが作られてしまう。
 
 ```bash
 aws sts get-caller-identity
 ```
 
-意図したアカウントでなければ、コンソールでログインし直してから CloudShell を開く。
+### 2. Terraform を入れる
 
-> なお、IP 制限などの Deny ポリシーが付いたアカウントでは CloudShell から IAM を操作できない。
-> CloudShell からの API 呼び出しの送信元 IP は AWS 側のアドレスになるため、社内 IP を条件にした
-> ポリシーに一致しない。その場合はこの手順では進められない。
-
-#### 1-2. OIDC プロバイダーの有無を確認する
-
-GitHub Actions 用の OIDC プロバイダーは **AWS アカウントに1つしか作れない**。同じアカウントで他のプロジェクトが既に GitHub Actions から OIDC を使っていれば、既存のものを参照する必要がある。
+CloudShell の `$HOME` は 1GB しかなく、AWS provider（数百MB）が入り切らない。Terraform 本体と provider は `/tmp` に置く。
 
 ```bash
-aws iam list-open-id-connect-providers
-```
-
-出力に `token.actions.githubusercontent.com` が含まれていれば、後の apply に
-`-var create_github_oidc_provider=false` を付ける。
-
-#### 1-3. Terraform を入れて apply する
-
-**CloudShell の `$HOME` は 1GB しかなく、AWS provider のバイナリ（数百MB）が入り切らずに
-`no space left on device` になる。** provider の展開先を `/tmp` に逃がす（`/` には数GBの空きがある）。
-
-```bash
-# terraform を /tmp に入れる（$HOME を消費しない）
 curl -fsSLo /tmp/tf.zip https://releases.hashicorp.com/terraform/1.13.4/terraform_1.13.4_linux_amd64.zip
 unzip -oq /tmp/tf.zip -d /tmp/tfbin
 export PATH=/tmp/tfbin:$PATH
-
-# provider の展開先も /tmp にする
 export TF_DATA_DIR=/tmp/tfdata
-
-# リポジトリは $HOME に置く。apply が途中で失敗したときに
-# terraform.tfstate を残して再開できるようにするため
-git clone https://github.com/<owner>/<repo>.git ~/<repo>
-cd ~/<repo>/infra/bootstrap
-
-terraform init
-
-# project_name は infra/variables.tf の project_name と揃える
-VARS="-var project_name=<project> -var github_repo=<owner>/<repo>"
-
-# 1-2 で既存の OIDC プロバイダーが見つかった場合
-terraform apply $VARS -var create_github_oidc_provider=false
-
-# 見つからなかった場合
-terraform apply $VARS
 ```
 
-`PATH` と `TF_DATA_DIR` は `export` なので、セッションを開き直したら設定し直す。
-`/tmp` の中身も消えるが、ブートストラップは一度きりなので問題ない。
+`PATH` と `TF_DATA_DIR` は `export` なので、CloudShell を開き直したら設定し直す。
 
-#### 1-4. 途中で失敗した場合
+### 3. tfstate のバケットを作る
 
-apply が途中で止まっても、作成済みのリソースは `terraform.tfstate` に記録されている。
-原因を直して**同じディレクトリで再実行すれば続きから完了する**。作り直されることはない。
-
-よくある失敗:
-
-```
-Error: creating IAM OIDC Provider: ... EntityAlreadyExists:
-Provider with url https://token.actions.githubusercontent.com already exists.
+```bash
+git clone https://github.com/yu-kod/app-template.git ~/app-template
+bash ~/app-template/infra/bootstrap/create-state-bucket.sh
 ```
 
-1-2 の確認を飛ばしたときに起きる。`-var create_github_oidc_provider=false` を付けて再実行する。
+`bucket: tfstate-<アカウントID>-ap-northeast-1` と出る。何度実行しても壊れない（既にあれば設定を揃えるだけ）。
 
-#### 1-5. 出力
+### 4. ロールを作る
 
-apply が終わると3つの値が出力される。
+```bash
+cd ~/app-template/infra/bootstrap
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+terraform init \
+  -backend-config="bucket=tfstate-${ACCOUNT}-ap-northeast-1" \
+  -backend-config="region=ap-northeast-1"
+terraform apply
+```
+
+この構成の state もバケットに残る（`bootstrap/terraform.tfstate`）。CloudShell を閉じても、次に同じ手順で再実行できる。
+
+GitHub の OIDC プロバイダーは、既にアカウントにあるものを参照する（yu-kod のアカウントには setnote などで作成済み）。
+まだ無いアカウントでは `terraform apply -var create_github_oidc_provider=true` にする。
+有無は `aws iam list-open-id-connect-providers` に `token.actions.githubusercontent.com` があるかで分かる。
+
+### 5. Secrets を登録する
+
+apply の最後に、リポジトリごとの値が出る。
 
 ```
-github_actions_role_arn = "arn:aws:iam::123456789012:role/<project>-github-actions"
-tfstate_bucket          = "<project>-tfstate"
-tfstate_lock_table      = "<project>-tfstate-lock"
+github_secrets = {
+  "three-marks" = {
+    "AWS_PLAN_ROLE_ARN" = "arn:aws:iam::123456789012:role/gha-plan-three-marks"
+    "AWS_ROLE_ARN"      = "arn:aws:iam::123456789012:role/gha-deploy-three-marks"
+  }
+}
 ```
 
-`tfstate_bucket` と `tfstate_lock_table` が `infra/main.tf` の `backend "s3"` と一致していることを確認する。
+各リポジトリの Settings → Secrets and variables → Actions に、`AWS_ROLE_ARN` と `AWS_PLAN_ROLE_ARN` を登録する。
+**登録するのはこの2つだけ。** アクセスキーは登録しない。
 
-このディレクトリに残る `terraform.tfstate` は捨ててよい。作られるリソースは `prevent_destroy` 済みで、以後この構成を変えることはほぼない。
+---
 
-### 2. GitHub の Secrets に登録
+## アプリを足す
 
-リポジトリの Settings → Secrets and variables → Actions で登録する。
+1. `yu-kod/app-template` の `infra/bootstrap/variables.tf` の `repositories` にリポジトリ名を足す（PR でマージ）
+2. CloudShell で「AWS アカウントの準備」の 2・4 を再実行する（`git -C ~/app-template pull` してから）。
+   増えるのは足したリポジトリのロールだけ
+3. 出力された `AWS_ROLE_ARN` と `AWS_PLAN_ROLE_ARN` をそのリポジトリの Secrets に登録する
+4. main へ push すればデプロイされる。手動で起動するなら Actions タブから Deploy を `workflow_dispatch` で実行する
 
-| 名前 | 値 |
-|---|---|
-| `AWS_ROLE_ARN` | 上で出力された `github_actions_role_arn` |
-
-**これだけ。** アクセスキーもシークレットキーも登録しない。GitHub Actions は OIDC で一時認証情報を得るため、長期の認証情報はどこにも存在しない。
-
-### 3. デプロイ
-
-`main` へ push すれば走る。手動で起動する場合は Actions タブから Deploy workflow を `workflow_dispatch` で実行する。
-
-初回は CloudFront ディストリビューションの作成に 5〜10 分かかる。
+初回は CloudFront ディストリビューションの作成に 5〜10 分かかる。カスタムドメインなら、ACM 証明書の DNS 検証にさらに数分かかる。
 
 ---
 
 ## カスタムドメイン
 
-既定ではカスタムドメインを使わず、CloudFront の既定ドメイン（`xxxxxxxx.cloudfront.net`）で公開する。
-
-ドメインで公開するときは `infra/variables.tf` の既定値を変える。yu-kod のアプリは
-`yu-web.site` の Route 53 ホストゾーン（setnote で作成済み）にサブドメインをぶら下げている。
+アプリの設定は `infra/terraform.tfvars` に書く（秘密情報は書かない）。
 
 ```hcl
 domain_name      = "<app>.yu-web.site"
 hosted_zone_name = "yu-web.site"
 ```
 
-ACM 証明書（us-east-1）と Route 53 の検証レコード・A レコード（CloudFront への ALIAS）は
-Terraform が自動で作る。**初回の apply は証明書の DNS 検証が通るまで数分かかる。**
+yu-kod のアプリは、`yu-web.site` の Route 53 ホストゾーン（setnote で作成済み）にサブドメインをぶら下げている。
+ACM 証明書（us-east-1）と Route 53 の検証レコード・A レコード（CloudFront への ALIAS）は Terraform が作る。
 
-### ドメインを使わない場合
-
-`domain_name` を空文字にすると CloudFront の既定ドメイン（`xxxxxxxx.cloudfront.net`）で公開し、
-ACM 証明書と Route 53 のレコードを作らない。ドメインを用意していない環境でもデプロイできる。
+両方を空にすると CloudFront の既定ドメイン（`xxxxxxxx.cloudfront.net`）で公開する。
 
 ---
 
@@ -179,38 +174,35 @@ ACM 証明書と Route 53 のレコードを作らない。ドメインを用意
 
 ### デプロイが `Assuming role with OIDC` を繰り返して進まない
 
-`Configure AWS credentials` のステップが `Assuming role with OIDC` を何度も出して止まる場合、
-ロールの引き受けに失敗してリトライしている。
+ロールの引き受けに失敗している。多いのは **`sub` クレームの形式**。リポジトリや owner を過去にリネームしていると、
+`sub` が `repo:owner/repo:...` ではなく `repo:owner@ownerId/repo@repoId:...` という **ID 付きの形式**で届くことがある
+（yu-kod/pusher-table と yu-kod/pop-art-trick で実際に起きた）。
 
-原因として多いのは、**`sub` クレームの形式**。リポジトリや owner を過去にリネームしていると、
-GitHub が発行する OIDC トークンの `sub` が通常形式ではなく
-`repo:owner@ownerId/repo@repoId:...` という **ID 付きの形式**になることがある。
+CloudTrail で `AssumeRoleWithWebIdentity` の実際の `sub` を確認し、`infra/bootstrap/variables.tf` の
+`extra_subject_prefixes` に足して再 apply する。
 
-CloudTrail で `AssumeRoleWithWebIdentity` の実際の `sub` を確認し、`infra/bootstrap/main.tf` の
-`extra_assume_role_subs` に足して再 apply する（yu-kod/pusher-table と yu-kod/pop-art-trick で実際に起きた）。
-
-```bash
-cd ~/<repo> && git pull
-cd infra/bootstrap
-terraform apply $VARS -var create_github_oidc_provider=false \
-  -var 'extra_assume_role_subs=["repo:yu-kod@48035533/<repo>@<repoId>:*"]'
+```hcl
+extra_subject_prefixes = {
+  "<repo>" = ["repo:yu-kod@48035533/<repo>@<repoId>"]
+}
 ```
 
-**ワイルドカードを広げて対処しないこと。** `repo:yu-kod*/<repo>*:*` のようなパターンは
-`yu-kod-foo/<repo>-bar` のような別リポジトリまで引き受けられてしまう。ID を明示したパターンを並べる。
-
-ID は以下で確認できる。
+**ワイルドカードを広げて対処しないこと。** 似た名前の別リポジトリまで引き受けられてしまう。ID は以下で確認できる。
 
 ```bash
-# owner id
 curl -s https://api.github.com/users/yu-kod | grep '"id"'
-# repo id
 curl -s https://api.github.com/repos/yu-kod/<repo> | grep '"id"'
 ```
 
+### PR に plan のコメントが付かない
+
+`AWS_PLAN_ROLE_ARN` が未登録だと plan ジョブは何もせずに終わる（ジョブの Summary に notice が出る）。
+Dependabot の PR は Secrets を読めないので、いつも飛ばされる。
+
 ### Terraform のロックが残った
 
-デプロイが途中で落ちるとロックが残ることがある。エラーメッセージに出る Lock ID を使って解除する。
+デプロイが途中で落ちると、state の横にロックファイル（`<repo>/terraform.tfstate.tflock`）が残ることがある。
+エラーメッセージに出る Lock ID で解除する。
 
 ```bash
 terraform -chdir=infra force-unlock <LOCK_ID>
@@ -219,3 +211,9 @@ terraform -chdir=infra force-unlock <LOCK_ID>
 ### CloudFront に反映されない
 
 キャッシュ無効化は deploy.yml が毎回行うが、反映まで数分かかる。ブラウザのキャッシュも疑うこと。
+
+### 以前の方式（リポジトリごとの bootstrap）のアプリ
+
+setnote・pusher-table・pop-art-trick は、リポジトリごとの tfstate バケットと DynamoDB のロックテーブルのまま。
+この方式へ移すときは、`repositories` に足してロールを作り、state を
+`terraform init -migrate-state -backend-config=...` で新しいバケットへ移す。

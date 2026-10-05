@@ -1,0 +1,26 @@
+name: Terraform init (アカウント共通の state)
+description: >
+  アカウントで1つの tfstate バケットに、リポジトリ名をキーにして繋ぐ。
+  バケット名はアカウント ID から組み立てる（infra/bootstrap/create-state-bucket.sh と同じ規則）。
+  先に aws-actions/configure-aws-credentials でロールを引き受けておくこと。
+inputs:
+  working-directory:
+    description: Terraform の構成があるディレクトリ
+    default: infra
+  aws-region:
+    description: AWS リージョン（バケット名にも入る）
+    default: ap-northeast-1
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        DIR: ${{ inputs.working-directory }}
+        REGION: ${{ inputs.aws-region }}
+        REPO: ${{ github.event.repository.name }}
+      run: |
+        account="$(aws sts get-caller-identity --query Account --output text)"
+        terraform -chdir="$DIR" init -input=false \
+          -backend-config="bucket=tfstate-${account}-${REGION}" \
+          -backend-config="key=${REPO}/terraform.tfstate" \
+          -backend-config="region=${REGION}"
