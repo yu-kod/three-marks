@@ -8,6 +8,8 @@ export type ReplayFrame = {
   kind: "flip" | "settle" | "round";
   view: GameView;
   banner: string | null;
+  /** 照合のコマなら、照合した投げ（アワードのカットインのきっかけ） */
+  record: ThrowRecord | null;
 };
 
 const gainedBy = (record: ThrowRecord) => [
@@ -51,6 +53,7 @@ export function replayFrames(prev: GameView | null, next: GameView): ReplayFrame
         frames.push({
           kind: "flip",
           banner: null,
+          record: null,
           view: {
             ...base,
             players: withMarks(base),
@@ -65,6 +68,7 @@ export function replayFrames(prev: GameView | null, next: GameView): ReplayFrame
       frames.push({
         kind: "settle",
         banner: null,
+        record,
         view: {
           ...base,
           players: withMarks(base),
@@ -81,6 +85,7 @@ export function replayFrames(prev: GameView | null, next: GameView): ReplayFrame
     frames.push({
       kind: "round",
       banner: `ROUND ${next.round}`,
+      record: null,
       view: {
         ...next,
         players: withMarks(next),

@@ -160,5 +160,8 @@ describe("replayFrames", () => {
 
     expect(settleA.view.currentThrower).toBeNull();
     expect(settleA.view.pending).toBeNull();
+    // 照合のコマは、照合した投げを持つ（カットインのきっかけ）。めくるコマは持たない
+    expect(settleA.record).toEqual(afterA.throws[0]);
+    expect(frames[0]!.record).toBeNull();
   });
 });

@@ -111,6 +111,24 @@
     },
     "board.bull": {
       "image": "board/bull.svg"
+    },
+    "cutin.GAME_SHOT": {
+      "image": "cutins/GAME_SHOT.svg"
+    },
+    "cutin.THREE_IN_A_BED": {
+      "image": "cutins/THREE_IN_A_BED.svg"
+    },
+    "cutin.DOUBLE_BULL": {
+      "image": "cutins/DOUBLE_BULL.svg"
+    },
+    "cutin.THREE_MARKS": {
+      "image": "cutins/THREE_MARKS.svg"
+    },
+    "cutin.DOUBLE_OPEN": {
+      "image": "cutins/DOUBLE_OPEN.svg"
+    },
+    "cutin.OPEN": {
+      "image": "cutins/OPEN.svg"
     }
   },
   "sounds": {
