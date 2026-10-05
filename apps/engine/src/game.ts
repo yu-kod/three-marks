@@ -13,7 +13,10 @@ import { resolveThrow, type ThrowResult } from "./throw.js";
 
 export type PlayerId = string;
 
-/** 1枚のカード。id はゲーム中ずっと変わらない（画面でカードの動きを追うため） */
+/**
+ * 1枚のカード。id はそのラウンドの中でだけ変わらない（画面でカードの動きを追うため）。
+ * 配るたびに振り直す（relabel）ので、ラウンドをまたいで同じカードを追うことはできない
+ */
 export type Card = { id: number; target: Target };
 
 /** 1回の投げの記録。狙いとめくり札は出た順のまま公開される（4.2-4） */
@@ -67,6 +70,25 @@ function createDeck(rules: Rules): Card[] {
   return deck;
 }
 
+/** ラウンドごとの id の幅。id は round * ID_SPAN + 0〜40 */
+const ID_SPAN = 1000;
+
+/**
+ * カードの id をラウンドごとに振り直す。
+ *
+ * id がゲーム中ずっと同じだと、回収の順番（公開情報）と今のめくり札の id を照らし合わせて
+ * カットの位置が分かり、山札の並びがほぼ読めてしまう（カットの意味が無くなる。4.4）。
+ * 並び順に振っても配られた順番が分かるので、乱数で並べ替えた番号を振る。
+ * ラウンドを id に含めて、前のラウンドの投げ（lastRoundThrows）の id とも重ならないようにする。
+ */
+function relabel(cards: readonly Card[], round: number, rng: Rng): Card[] {
+  const labels = shuffle(
+    cards.map((_, i) => i),
+    rng
+  );
+  return cards.map((card, i) => ({ id: round * ID_SPAN + labels[i]!, target: card.target }));
+}
+
 /**
  * スタートプレイヤーから時計回りに1枚ずつ、全員が手札の枚数になるまで配る（4.1・解釈メモ8）。
  */
@@ -99,7 +121,7 @@ export function createGame(players: readonly PlayerId[], rng: Rng): GameState {
   const rules = rulesFor(players.length);
   const shuffled = shuffle(createDeck(rules), rng);
   const startIndex = rng.nextInt(players.length);
-  const { deck, hands } = deal(shuffled, players, startIndex, rules.handSize);
+  const { deck, hands } = deal(relabel(shuffled, 1, rng), players, startIndex, rules.handSize);
 
   return {
     rules,
@@ -202,11 +224,17 @@ function endRound(state: GameState, rng: Rng): GameState {
   const cut = [...collected.slice(at), ...collected.slice(0, at)];
 
   const startIndex = (state.startIndex + 1) % state.players.length;
-  const { deck, hands } = deal(cut, state.players, startIndex, state.rules.handSize);
+  const round = state.round + 1;
+  const { deck, hands } = deal(
+    relabel(cut, round, rng),
+    state.players,
+    startIndex,
+    state.rules.handSize
+  );
 
   return {
     ...state,
-    round: state.round + 1,
+    round,
     startIndex,
     deck,
     hands,
