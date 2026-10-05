@@ -10,6 +10,7 @@ import { shuffle, type Rng } from "./rng.js";
 import { MAX_PLAYERS, MIN_PLAYERS, rulesFor, type Rules } from "./rules.js";
 import { TARGETS, type Target } from "./targets.js";
 import { resolveThrow, type ThrowResult } from "./throw.js";
+import { awardsFor, type Award } from "./awards.js";
 
 export type PlayerId = string;
 
@@ -25,6 +26,8 @@ export type ThrowRecord = {
   aims: Card[];
   flips: Card[];
   result: ThrowResult;
+  /** 演出のきっかけ（#31）。格の高い順 */
+  awards: Award[];
 };
 
 /**
@@ -254,7 +257,10 @@ function settle(state: GameState, rng: Rng): GameState {
     ...state,
     pending: null,
     marks: { ...state.marks, [player]: addMarks(state.marks[player]!, gained) },
-    throws: [...state.throws, { player, aims, flips, result }],
+    throws: [
+      ...state.throws,
+      { player, aims, flips, result, awards: awardsFor(result, state.marks[player]!) },
+    ],
   };
 
   return thrown.throws.length === state.players.length ? endRound(thrown, rng) : thrown;

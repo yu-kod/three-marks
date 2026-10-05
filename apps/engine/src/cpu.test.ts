@@ -89,6 +89,7 @@ describe("chooseAims — CPU の狙いの選び方（解釈メモ14）", () => {
           aims: publicCards.slice(0, 3),
           flips: publicCards.slice(3),
           result: { hits: [], wildHits: [] },
+          awards: [],
         },
       ],
     });
@@ -122,7 +123,15 @@ describe("chooseAims — CPU の狙いの選び方（解釈メモ14）", () => {
     );
     const v = view({
       myHand: hand,
-      throws: [{ player: "d", aims: [], flips: publicCards, result: { hits: [], wildHits: [] } }],
+      throws: [
+        {
+          player: "d",
+          aims: [],
+          flips: publicCards,
+          result: { hits: [], wildHits: [] },
+          awards: [],
+        },
+      ],
     });
 
     let best = 0;
@@ -145,7 +154,15 @@ describe("chooseAims — CPU の狙いの選び方（解釈メモ14）", () => {
     );
     const v = view({
       myHand: cards(19, 19, 19, 19, 18),
-      throws: [{ player: "d", aims: [], flips: publicCards, result: { hits: [], wildHits: [] } }],
+      throws: [
+        {
+          player: "d",
+          aims: [],
+          flips: publicCards,
+          result: { hits: [], wildHits: [] },
+          awards: [],
+        },
+      ],
     });
 
     expect(chooseAims(v, createRng(3))).toHaveLength(3);
