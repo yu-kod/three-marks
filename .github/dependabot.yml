@@ -25,7 +25,7 @@ updates:
     versioning-strategy: increase
     labels: ["dependencies"]
     commit-message:
-      prefix: chore(deps)
+      prefix: chore
       include: scope
     ignore:
       # typescript-eslint が TS 7 に未対応で、上げると eslint が起動時に落ちる。
@@ -62,7 +62,7 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "infra"]
     commit-message:
-      prefix: chore(deps)
+      prefix: chore
       include: scope
 
   - package-ecosystem: github-actions
@@ -75,7 +75,7 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "github-actions"]
     commit-message:
-      prefix: chore(deps)
+      prefix: chore
       include: scope
     groups:
       github-actions:
