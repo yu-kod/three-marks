@@ -126,6 +126,7 @@ describe("throwCards（4.2 投げる）", () => {
         aims: hand.slice(0, 3),
         flips: deck.slice(0, 5),
         result: { hits: [17], wildHits: [{ aim: 18, wild: 20 }] },
+        awards: [],
       },
     ]);
     expect(next.hands.d).toEqual(hand.slice(3));
