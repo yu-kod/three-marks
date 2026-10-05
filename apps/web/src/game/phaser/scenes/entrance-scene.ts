@@ -1,6 +1,7 @@
 import type { Screen } from "../../screens";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import { drawButton } from "../parts/button";
+import { drawNameChip } from "../parts/name-editor";
 import { addText } from "../parts/text";
 import { showToast } from "../parts/toast";
 import { placeVisual } from "../parts/visual";
@@ -39,13 +40,15 @@ export class EntranceScene extends BaseScene {
       color: "muted",
     });
 
-    const name = addText(this, skin, BASE_WIDTH / 2, BASE_HEIGHT - 190, "", {
-      size: 14,
-      color: "muted",
-    });
+    let chip: Phaser.GameObjects.Text | null = null;
     const showName = () => {
-      const { guest } = screen.guest.getState();
-      name.setText(guest ? `${guest.name} として遊びます` : "名前は入らない。すぐ始められます");
+      chip?.destroy();
+      chip = drawNameChip(this, skin, {
+        x: BASE_WIDTH / 2,
+        y: BASE_HEIGHT - 200,
+        name: screen.guest.getState().guest?.name ?? null,
+        onRename: screen.rename,
+      });
     };
     showName();
     this.onShutdown(screen.guest.subscribe(showName));

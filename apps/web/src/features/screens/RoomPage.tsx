@@ -3,6 +3,7 @@ import type { ApiClient } from "@app/web-core";
 import { useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { SkinnedGame, type SkinnedGameProps } from "./SkinnedGame";
+import { renameGuest } from "@/features/table/rename";
 import { createRoomActions } from "@/features/table/room-actions";
 import { shareInvite, type ShareTarget } from "@/features/table/share-invite";
 import { createTableApi } from "@/features/table/table-api";
@@ -54,6 +55,7 @@ export function RoomPage({
       kind: "room",
       guest: session,
       store,
+      rename: (name) => renameGuest((n) => session.ensure(n), name),
       actions: { ...actions, share: () => shareInvite(inviteUrl, shareTarget) },
     };
   }, [client, id, session, shareTarget, store]);

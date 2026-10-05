@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lobbyButtons, lobbyView } from "./lobby";
+import { lobbyButtons, lobbyView, orderMovingUp } from "./lobby";
 import { buildRoom } from "@/test-utils/table";
 
 const member = (id: string, name = id) => ({ id, name, cpu: false });
@@ -12,8 +12,8 @@ describe("lobbyView", () => {
     });
 
     expect(lobbyView(room, "b").seats).toEqual([
-      { kind: "player", name: "あなた", host: true, me: false },
-      { kind: "player", name: "ペンギン", host: false, me: true },
+      { kind: "player", id: "a", name: "あなた", host: true, me: false, canMoveUp: false },
+      { kind: "player", id: "b", name: "ペンギン", host: false, me: true, canMoveUp: false },
       { kind: "cpu" },
       { kind: "cpu" },
     ]);
@@ -44,7 +44,7 @@ describe("lobbyView", () => {
 });
 
 describe("lobbyButtons", () => {
-  const room = buildRoom({ hostId: "a", members: [member("a")] });
+  const room = buildRoom({ hostId: "a", members: [member("a"), member("b")] });
 
   it("参加していなければ「参加する」が主役。招待はいつでも送れる", () => {
     expect(lobbyButtons(lobbyView(room, "x"))).toEqual([
@@ -54,7 +54,7 @@ describe("lobbyButtons", () => {
   });
 
   it("参加していれば、招待が主役で、席を離れることもできる", () => {
-    expect(lobbyButtons(lobbyView(room, "a"))).toEqual([
+    expect(lobbyButtons(lobbyView(room, "b"))).toEqual([
       { action: "share", label: "招待 URL を送る", primary: true },
       { action: "leave", label: "席を離れる", primary: false },
     ]);
@@ -66,5 +66,39 @@ describe("lobbyButtons", () => {
     expect(lobbyButtons(lobbyView(full, "x"))).toEqual([
       { action: "share", label: "招待 URL を送る", primary: true },
     ]);
+  });
+});
+
+describe("ホストの操作", () => {
+  const room = buildRoom({ hostId: "a", members: [member("a"), member("b"), member("c")] });
+
+  it("ホストは、ゲームを始める（主役）・カードを引いて席順を決める・招待・席を離れるを選べる", () => {
+    expect(lobbyButtons(lobbyView(room, "a"))).toEqual([
+      { action: "start", label: "ゲームを始める", primary: true },
+      { action: "draw", label: "カードを引いて席順を決める", primary: false },
+      { action: "share", label: "招待 URL を送る", primary: false },
+      { action: "leave", label: "席を離れる", primary: false },
+    ]);
+  });
+
+  it("ホストには、2番目から後ろの人の席に「上へ」が出る。ほかの人には出ない", () => {
+    const seats = (me: string) =>
+      lobbyView(room, me).seats.map((s) => s.kind === "player" && s.canMoveUp);
+
+    expect(seats("a")).toEqual([false, true, true, false]);
+    expect(seats("b")).toEqual([false, false, false, false]);
+  });
+
+  it("上へ動かした並び（ひとつ前の人と入れ替える）", () => {
+    expect(orderMovingUp(lobbyView(room, "a"), 2)).toEqual(["a", "c", "b"]);
+    expect(orderMovingUp(lobbyView(room, "a"), 1)).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("最後の1人だったホストが席を離れたあと", () => {
+  it("ホストの操作は出さず、参加できる（次に参加した人がホストになる）", () => {
+    const emptied = buildRoom({ hostId: "a", members: [] });
+
+    expect(lobbyView(emptied, "a")).toMatchObject({ host: false, canJoin: true });
   });
 });

@@ -15,6 +15,7 @@ export const entranceScreen = (): Screen => ({
   kind: "entrance",
   guest: idleGuest(),
   createRoom: vi.fn(async () => ({ ok: true as const })),
+  rename: vi.fn(async () => ({ ok: true as const })),
 });
 
 export const roomScreen = (): Screen => ({
@@ -25,9 +26,13 @@ export const roomScreen = (): Screen => ({
     api: { getRoom: vi.fn(), getGame: vi.fn() },
     subscribe: () => () => {},
   }),
+  rename: vi.fn(async () => ({ ok: true as const })),
   actions: {
     join: vi.fn(async () => ({ ok: true as const })),
     leave: vi.fn(async () => ({ ok: true as const })),
     share: vi.fn(async () => ({ ok: true, message: null })),
+    start: vi.fn(async () => ({ ok: true as const })),
+    drawSeats: vi.fn(async () => ({ ok: true as const })),
+    arrange: vi.fn(async () => ({ ok: true as const })),
   },
 });

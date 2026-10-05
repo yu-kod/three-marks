@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lobbyButtons, lobbyView } from "./lobby";
 import { roomModel } from "./room-model";
+import { seatDrawRounds } from "./seat-draw";
 import { buildGameView, buildRoom } from "@/test-utils/table";
 
 describe("roomModel", () => {
@@ -30,6 +31,7 @@ describe("roomModel", () => {
       headline: "待合室 1 / 4 人",
       view: lobbyView(room, "g1"),
       buttons: lobbyButtons(lobbyView(room, "g1")),
+      seatDraw: seatDrawRounds(room),
     });
   });
 

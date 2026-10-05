@@ -1,16 +1,30 @@
 import { tableHeadline } from "./headline";
 import { lobbyButtons, lobbyView, type LobbyButton, type LobbyView } from "./lobby";
+import { seatDrawRounds, type SeatDrawRound } from "./seat-draw";
 import type { TableState } from "./table-store";
 
 /** ルームの画面に描くもの。前と同じなら描き直さない（押している途中のボタンを消さないため） */
 export type RoomModel =
   | { kind: "loading" | "error" | "playing"; headline: string }
-  | { kind: "lobby"; headline: string; view: LobbyView; buttons: LobbyButton[] };
+  | {
+      kind: "lobby";
+      headline: string;
+      view: LobbyView;
+      buttons: LobbyButton[];
+      /** カードを引いて席順を決めた結果（引いていなければ null） */
+      seatDraw: SeatDrawRound[] | null;
+    };
 
 export function roomModel(state: TableState, me: string | null): RoomModel {
   const headline = tableHeadline(state);
   if (state.status !== "ready") return { kind: state.status, headline };
   if (state.room.status !== "waiting") return { kind: "playing", headline };
   const view = lobbyView(state.room, me);
-  return { kind: "lobby", headline, view, buttons: lobbyButtons(view) };
+  return {
+    kind: "lobby",
+    headline,
+    view,
+    buttons: lobbyButtons(view),
+    seatDraw: seatDrawRounds(state.room),
+  };
 }

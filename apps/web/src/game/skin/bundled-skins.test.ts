@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { SKIN_IDS } from "./load-skin";
-import { parseSkin, SLOT_KEYS } from "./skin";
+import { parseSkin, SLOT_KEYS, SOUND_KEYS } from "./skin";
 
 const skinsDir = path.resolve(import.meta.dirname, "../../../public/skins");
 const ORIGIN = "https://example.com";
@@ -35,6 +35,16 @@ describe.each(SKIN_IDS)("同梱のスキン %s", (id) => {
     for (const key of SLOT_KEYS) {
       const visual = slots[key];
       if ("image" in visual) expect(existsSync(fileOf(visual.image)), key).toBe(true);
+    }
+  });
+});
+
+describe.each(SKIN_IDS)("同梱のスキン %s の音", (id) => {
+  it("効果音のファイルがある", () => {
+    const { sounds } = load(id).assets;
+
+    for (const key of SOUND_KEYS) {
+      expect(existsSync(fileOf(sounds[key])), key).toBe(true);
     }
   });
 });
