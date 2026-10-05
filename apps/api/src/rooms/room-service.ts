@@ -6,6 +6,8 @@ import {
   chooseAims,
   createGame,
   currentThrower,
+  declareAims as declareInGame,
+  revealFlips as revealInGame,
   throwCards as throwInGame,
   createRng as seededRng,
   drawSeats as drawSeatOrder,
@@ -85,7 +87,8 @@ function withCpus(members: RoomMember[], joinedAt: number): RoomMember[] {
 function playCpuTurns(game: GameState, members: RoomMember[], rng: Rng): GameState {
   const cpus = new Set(members.filter((m) => m.cpu).map((m) => m.guestId));
   let state = game;
-  while (state.phase === "throwing" && cpus.has(currentThrower(state))) {
+  // めくっている途中（人がまだめくり終えていない）なら進めない
+  while (state.phase === "throwing" && state.pending === null && cpus.has(currentThrower(state))) {
     const cpu = currentThrower(state);
     state = throwInGame(state, cpu, chooseAims(viewFor(state, cpu), rng), rng);
   }
@@ -270,15 +273,29 @@ export function createRoomService({
       }),
 
     /**
-     * 手番の人が手札から狙いを出して投げる（4.2）。全員が投げ終わればラウンドの終わり（4.4）までエンジンが進める。
-     * 返すのは投げた人に見せてよい状態だけ。
+     * 手番の人が手札から狙いを出す（4.2）。まだめくらない（#30）。狙いは全員に見える。
+     * 返すのは出した人に見せてよい状態だけ。
      */
-    async throwCards(roomId: string, player: GuestIdentity, aimIds: number[]): Promise<GameView> {
+    async declareAims(roomId: string, player: GuestIdentity, aimIds: number[]): Promise<GameView> {
+      const room = await updateRecord(roomId, (room) => {
+        const game = requireGame(room);
+        return { ...room, game: withGameRules(() => declareInGame(game, player.id, aimIds)) };
+      });
+      return viewFor(room.game!, player.id);
+    },
+
+    /**
+     * 狙いを出した人が山札の上からめくる。count 枚か、"all" で残りを全部。
+     * めくり終われば照合して次の人へ。全員が投げ終わればラウンドの終わり（4.4）まで、
+     * 次が CPU なら人の手番か終わりまで進める。1枚めくるたびに書いて知らせるので、他の人の画面でも1枚ずつ開く。
+     */
+    async flip(roomId: string, player: GuestIdentity, count: number | "all"): Promise<GameView> {
       const room = await updateRecord(roomId, (room) => {
         const game = requireGame(room);
         const rng = createRng();
-        const thrown = withGameRules(() => throwInGame(game, player.id, aimIds, rng));
-        return { ...room, game: playCpuTurns(thrown, room.members, rng) };
+        const n = count === "all" ? game.rules.flipCount : count;
+        const flipped = withGameRules(() => revealInGame(game, player.id, n, rng));
+        return { ...room, game: playCpuTurns(flipped, room.members, rng) };
       });
       return viewFor(room.game!, player.id);
     },

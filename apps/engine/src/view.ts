@@ -2,6 +2,7 @@ import {
   currentThrower,
   type Card,
   type GameState,
+  type PendingThrow,
   type PlayerId,
   type ThrowRecord,
 } from "./game.js";
@@ -41,6 +42,8 @@ export type GameView = {
   myHand: Card[] | null;
   /** 狙いとめくり札は公開情報（4.2-4） */
   throws: ThrowRecord[];
+  /** めくっている途中の投げ（狙いと、めくった札だけ。まだめくっていない札は山札の枚数に入る） */
+  pending: PendingThrow | null;
   lastRoundThrows: ThrowRecord[];
   phase: GameState["phase"];
   winners: PlayerId[] | null;
@@ -67,6 +70,7 @@ export function viewFor(state: GameState, viewer: PlayerId | null): GameView {
     deckCount: state.deck.length,
     myHand: isPlayer ? state.hands[viewer]! : null,
     throws: state.throws,
+    pending: state.pending,
     lastRoundThrows: state.lastRoundThrows,
     phase: state.phase,
     winners: state.winners,

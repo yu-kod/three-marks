@@ -14,8 +14,11 @@ export { createRng, shuffle, type Rng } from "./rng.js";
 export {
   createGame,
   currentThrower,
+  declareAims,
   GameRuleError,
+  revealFlips,
   throwCards,
+  type PendingThrow,
   type Card,
   type GameState,
   type PlayerId,

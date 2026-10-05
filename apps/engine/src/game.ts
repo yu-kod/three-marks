@@ -28,6 +28,17 @@ export type ThrowRecord = {
 };
 
 /**
+ * 狙いを出して、めくっている途中の投げ（#30）。狙いと、めくった札は全員に公開される。
+ * めくり終わるまで照合しないので、マークは投げる前のまま（解釈メモ3）。
+ */
+export type PendingThrow = {
+  player: PlayerId;
+  aims: Card[];
+  /** めくった順 */
+  flips: Card[];
+};
+
+/**
  * ゲームの完全な状態（サーバーだけが持つ）。
  *
  * 山札の中身と順番、他人の手札を含むので、そのままクライアントへ返さない（CLAUDE.md）。
@@ -43,8 +54,10 @@ export type GameState = {
   /** 山札。先頭が一番上 */
   deck: Card[];
   hands: Record<PlayerId, Card[]>;
-  /** このラウンドの投げ（投げた順） */
+  /** このラウンドの投げ（投げた順）。めくり終わって照合したものだけ */
   throws: ThrowRecord[];
+  /** めくっている途中の投げ。無ければ null */
+  pending: PendingThrow | null;
   /** 前のラウンドの投げ。ラウンドが変わっても、最後の投げの結果を画面に出せるように残す */
   lastRoundThrows: ThrowRecord[];
   phase: "throwing" | "finished";
@@ -133,6 +146,7 @@ export function createGame(players: readonly PlayerId[], rng: Rng): GameState {
     deck,
     hands,
     throws: [],
+    pending: null,
     lastRoundThrows: [],
     phase: "throwing",
     winners: null,
@@ -162,27 +176,72 @@ function takeAims(hand: readonly Card[], aimIds: readonly number[], aimCount: nu
   return { aims, rest: hand.filter((c) => !aimIds.includes(c.id)) };
 }
 
-/**
- * 手番の人が投げる（4.2・4.3）。
- *
- * 手札から狙いを出し、山札の上からめくって照合し、マークを付ける。
- * ワイルドと死に番は投げる前の状態で判定する（解釈メモ3）。
- */
-export function throwCards(
-  state: GameState,
-  player: PlayerId,
-  aimIds: readonly number[],
-  rng: Rng
-): GameState {
+function assertTurn(state: GameState, player: PlayerId) {
   if (state.phase === "finished") {
     throw new GameRuleError("ゲームは終わっている");
   }
   if (currentThrower(state) !== player) {
     throw new GameRuleError(`${player} の手番ではない`);
   }
+}
 
+/**
+ * 手番の人が手札から狙いを出す（4.2）。まだめくらない。めくるのは revealFlips。
+ */
+export function declareAims(
+  state: GameState,
+  player: PlayerId,
+  aimIds: readonly number[]
+): GameState {
+  assertTurn(state, player);
+  if (state.pending !== null) {
+    throw new GameRuleError("めくっている途中");
+  }
   const { aims, rest } = takeAims(state.hands[player]!, aimIds, state.rules.aimCount);
-  const flips = state.deck.slice(0, state.rules.flipCount);
+  return {
+    ...state,
+    hands: { ...state.hands, [player]: rest },
+    pending: { player, aims, flips: [] },
+  };
+}
+
+/**
+ * 狙いを出した人が、山札の上から count 枚めくる（残りより多ければ残りの分だけ）。
+ *
+ * めくる枚数が揃ったら照合してマークを付け、次の人の手番にする（4.3）。
+ * ワイルドと死に番は投げる前の状態で判定する（解釈メモ3。めくっている間マークは変わらない）。
+ */
+export function revealFlips(
+  state: GameState,
+  player: PlayerId,
+  count: number,
+  rng: Rng
+): GameState {
+  const pending = state.pending;
+  if (pending === null) {
+    throw new GameRuleError("狙いを出していない");
+  }
+  if (pending.player !== player) {
+    throw new GameRuleError(`${player} の投げではない`);
+  }
+  if (count < 1) {
+    throw new GameRuleError("1枚以上めくる");
+  }
+
+  const n = Math.min(count, state.rules.flipCount - pending.flips.length);
+  const revealed: GameState = {
+    ...state,
+    deck: state.deck.slice(n),
+    pending: { ...pending, flips: [...pending.flips, ...state.deck.slice(0, n)] },
+  };
+  return revealed.pending!.flips.length === state.rules.flipCount
+    ? settle(revealed, rng)
+    : revealed;
+}
+
+/** めくり終わった投げを照合してマークを付け、全員が投げ終わっていればラウンドを終える */
+function settle(state: GameState, rng: Rng): GameState {
+  const { player, aims, flips } = state.pending!;
   const result = resolveThrow({
     aims: aims.map((c) => c.target),
     flips: flips.map((c) => c.target),
@@ -193,13 +252,24 @@ export function throwCards(
 
   const thrown: GameState = {
     ...state,
-    deck: state.deck.slice(flips.length),
-    hands: { ...state.hands, [player]: rest },
+    pending: null,
     marks: { ...state.marks, [player]: addMarks(state.marks[player]!, gained) },
     throws: [...state.throws, { player, aims, flips, result }],
   };
 
   return thrown.throws.length === state.players.length ? endRound(thrown, rng) : thrown;
+}
+
+/**
+ * 手番の人が投げる（4.2・4.3）。狙いを出して、残りを一気にめくる。CPU とテストで使う。
+ */
+export function throwCards(
+  state: GameState,
+  player: PlayerId,
+  aimIds: readonly number[],
+  rng: Rng
+): GameState {
+  return revealFlips(declareAims(state, player, aimIds), player, state.rules.flipCount, rng);
 }
 
 /**
