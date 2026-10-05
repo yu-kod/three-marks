@@ -2,6 +2,7 @@ import type * as Phaser from "phaser";
 import { BASE_HEIGHT, BASE_WIDTH } from "../layout";
 import type { Skin } from "@/game/skin/skin";
 import type { CutIn } from "@/game/state/cut-in";
+import type { CutInStyle } from "@/game/state/effects";
 import { playSound } from "./sound";
 import { addText } from "./text";
 import { placeVisual } from "./visual";
@@ -10,23 +11,22 @@ const BANNER = { width: 360, height: 140 };
 
 /**
  * アワードのカットイン。帯が横から飛び込んで弾み、格が高いほど暗く・揺れ・光り・紙吹雪が舞い、長く残る。
- * ほかの人の投げは小さく短く。絵は差し込み口 cutin.<アワード>、時間はスキンの cutInMs から。
+ * 出し方（大きさ・長さ・揺れ・紙吹雪）は演出の強さから決めた style、絵は差し込み口 cutin.<アワード>、
+ * 時間はスキンの cutInMs から。
  */
-export function playCutIn(scene: Phaser.Scene, skin: Skin, cut: CutIn): Promise<void> {
-  const big = cut.mine ? 1 : 0.78;
-  const hold = skin.motion.cutInMs * (cut.mine ? 0.5 + cut.tier * 0.18 : 0.45);
+export function playCutIn(
+  scene: Phaser.Scene,
+  skin: Skin,
+  cut: CutIn,
+  style: CutInStyle
+): Promise<void> {
+  const big = style.scale;
+  const hold = skin.motion.cutInMs * style.holdRate;
   const cx = BASE_WIDTH / 2;
   const cy = BASE_HEIGHT / 2 - 60;
 
   const shade = scene.add
-    .rectangle(
-      0,
-      0,
-      BASE_WIDTH,
-      BASE_HEIGHT,
-      skin.colors.panel,
-      Math.min(0.85, 0.35 + cut.tier * 0.08) * big
-    )
+    .rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, skin.colors.panel, style.dim)
     .setOrigin(0)
     .setDepth(60);
   const banner = placeVisual(scene, `cutin.${cut.kind}`, skin.slots[`cutin.${cut.kind}`], {
@@ -60,7 +60,7 @@ export function playCutIn(scene: Phaser.Scene, skin: Skin, cut: CutIn): Promise<
   });
   scene.tweens.add({ targets: label, alpha: 1, y: "-=8", delay: 260, duration: 200 });
 
-  if (cut.mine && cut.tier >= 2) {
+  if (style.flash) {
     const flash = scene.add
       .rectangle(0, 0, BASE_WIDTH, BASE_HEIGHT, 0xffffff, 0.55)
       .setOrigin(0)
@@ -68,12 +68,12 @@ export function playCutIn(scene: Phaser.Scene, skin: Skin, cut: CutIn): Promise<
     parts.push(flash);
     scene.tweens.add({ targets: flash, alpha: 0, delay: 170, duration: 260 });
   }
-  if (cut.mine && cut.tier >= 3) {
-    scene.time.delayedCall(180, () =>
-      scene.cameras.main.shake(160 + cut.tier * 40, 0.003 * cut.tier)
-    );
+  if (style.shake > 0) {
+    scene.time.delayedCall(180, () => scene.cameras.main.shake(160 + cut.tier * 40, style.shake));
+  }
+  if (style.confetti > 0) {
     // 紙吹雪（席の色）
-    const count = 12 + cut.tier * 8;
+    const count = style.confetti;
     for (let i = 0; i < count; i++) {
       const color = skin.colors.players[i % skin.colors.players.length]!;
       const bit = scene.add.rectangle(cx, cy, 6, 12, color).setDepth(63);

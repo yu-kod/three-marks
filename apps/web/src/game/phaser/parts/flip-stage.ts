@@ -70,6 +70,8 @@ export class FlipStage {
       count: number;
       deckCount: number;
       flip: (count: number | "all") => Promise<ActionResult>;
+      /** 当たった札がくっついたときに、揺らす・光らせるか（演出の強さから） */
+      impact: () => { shake: boolean; flash: boolean };
     }
   ) {
     const { width, height } = skin.card;
@@ -371,7 +373,8 @@ export class FlipStage {
         })
       );
       // くっついた瞬間：止まって光る
-      scene.cameras.main.shake(90, 0.006);
+      const impact = this.opts.impact();
+      if (impact.shake) scene.cameras.main.shake(90, 0.006);
       playSound(scene, "sfx.seat");
       const flash = scene.add
         .rectangle(
@@ -380,7 +383,7 @@ export class FlipStage {
           skin.card.width + 18,
           skin.card.height + 40,
           skin.colors.text,
-          0.7
+          impact.flash ? 0.7 : 0.25
         )
         .setDepth(31);
       scene.tweens.add({

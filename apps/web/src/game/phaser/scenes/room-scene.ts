@@ -31,6 +31,17 @@ import {
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
 import { cutInFor } from "@/game/state/cut-in";
+import {
+  cutInStyle,
+  EFFECT_LABELS,
+  effectPlan,
+  nextEffectLevel,
+  playbackSpeed,
+  saveEffectLevel,
+  savedEffectLevel,
+  type EffectLevel,
+} from "@/game/state/effects";
+import { createJsonStorage } from "@app/web-core";
 import { roomModel } from "@/game/state/room-model";
 import { latestThrowOf } from "@/game/state/squeeze";
 import type { TableState } from "@/game/state/table-store";
@@ -61,11 +72,12 @@ export class RoomScene extends BaseScene {
     const { skin, screen } = this;
     this.add.rectangle(0, 0, BASE_WIDTH, HEADER, skin.colors.panel).setOrigin(0);
     placeVisual(this, "logo", skin.slots.logo, { x: 74, y: HEADER / 2, width: 120, height: 48 });
-    this.headline = addText(this, skin, BASE_WIDTH - 16, HEADER / 2, "", {
+    this.headline = addText(this, skin, BASE_WIDTH - 92, HEADER / 2, "", {
       size: 14,
       color: "muted",
       originX: 1,
     });
+    this.drawEffectsChip();
     this.body = this.add.container(0, 0);
 
     const render = () => this.render();
@@ -76,6 +88,40 @@ export class RoomScene extends BaseScene {
       offStore();
       offGuest();
     });
+  }
+
+  /** 演出の強さ（端末に保存する） */
+  private effects: EffectLevel = savedEffectLevel(createJsonStorage());
+  /** 前に出したカットイン（同じ演出が続くときは短くする） */
+  private lastCutIn: string | null = null;
+
+  /** 見出しの右の「演出」ボタン。押すたびに 強→標準→弱→なし と切り替えて端末に保存する */
+  private drawEffectsChip() {
+    const { skin } = this;
+    const x = BASE_WIDTH - 46;
+    const box = this.add
+      .rectangle(x, HEADER / 2, 72, 30, skin.colors.background, 1)
+      .setStrokeStyle(1, skin.colors.muted)
+      .setInteractive({ useHandCursor: true });
+    const label = addText(this, skin, x, HEADER / 2, "", { size: 12, color: "muted" });
+    const show = () => label.setText(`演出 ${EFFECT_LABELS[this.effects]}`);
+    show();
+    box.on(Phaser.Input.Events.POINTER_UP, () => {
+      this.effects = nextEffectLevel(this.effects);
+      saveEffectLevel(this.effects, createJsonStorage());
+      playSound(this, "sfx.tap");
+      show();
+      this.applySpeed();
+    });
+  }
+
+  /** 演出中にタップしたら、その再生が終わるまで早送り */
+  private fastForward = false;
+
+  private applySpeed() {
+    const speed = this.playing ? playbackSpeed(this.effects, this.fastForward) : 1;
+    this.time.timeScale = speed;
+    this.tweens.timeScale = speed;
   }
 
   /** 前に届いたゲームの状態。ここからの差分を1枚ずつ再生する */
@@ -108,6 +154,13 @@ export class RoomScene extends BaseScene {
   private async playQueue() {
     if (this.playing) return;
     this.playing = true;
+    this.fastForward = false;
+    this.applySpeed();
+    const skip = () => {
+      this.fastForward = true;
+      this.applySpeed();
+    };
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, skip);
     // めくりの舞台が開いていれば、最後の札まで見せて閉じてから、ほかの人の投げを再生する
     if (this.stage) {
       const game = (this.screen.store.getState() as Extract<TableState, { status: "ready" }>).game!;
@@ -136,12 +189,18 @@ export class RoomScene extends BaseScene {
       if (frame.record) {
         const who = state.room.members.find((m) => m.id === frame.record!.player)?.name ?? "";
         const cut = cutInFor(frame.record.awards, who, frame.record.player === this.me());
-        if (cut) await playCutIn(this, this.skin, cut);
+        const style = cut && cutInStyle(this.effects, cut, cut.kind === this.lastCutIn);
+        if (cut && style) {
+          this.lastCutIn = cut.kind;
+          await playCutIn(this, this.skin, cut, style);
+        }
       }
       if (frame.banner) this.showBanner(frame.banner);
       await new Promise<void>((resolve) => this.time.delayedCall(hold[frame.kind], resolve));
     }
+    this.input.off(Phaser.Input.Events.POINTER_DOWN, skip);
     this.playing = false;
+    this.applySpeed();
     this.draw(this.screen.store.getState());
   }
 
@@ -400,6 +459,7 @@ export class RoomScene extends BaseScene {
         count: current.flips.length + current.flipsLeft,
         deckCount: game.deckCount,
         flip: (count) => screen.actions.flip(count),
+        impact: () => effectPlan(this.effects),
       });
       this.stage.update(current.flips);
     } else {
