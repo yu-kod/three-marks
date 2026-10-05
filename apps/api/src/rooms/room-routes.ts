@@ -8,6 +8,12 @@ const seatsSchema = z.object({ order: z.array(z.string()) });
 
 const throwSchema = z.object({ aims: z.array(z.number().int()) });
 
+/** 1枚ずつ（count）か、残りを全部（all） */
+const flipSchema = z.union([
+  z.object({ count: z.number().int().min(1) }),
+  z.object({ all: z.literal(true) }),
+]);
+
 /**
  * ルームの作成・参加・取得と、席の操作（離れる・並べる・引いて決める）。`/api/rooms` にマウントする。
  *
@@ -53,9 +59,17 @@ export function createRoomRoutes(service: RoomService) {
     c.json({ game: await service.getGame(c.req.param("id"), c.var.identity) })
   );
 
+  // 狙いを出す（まだめくらない）
   routes.post("/:id/game/throws", requireIdentity(), async (c) => {
     const { aims } = await parseJson(c, throwSchema);
-    return c.json({ game: await service.throwCards(c.req.param("id"), c.var.identity!, aims) });
+    return c.json({ game: await service.declareAims(c.req.param("id"), c.var.identity!, aims) });
+  });
+
+  // 狙いを出した人がめくる。{ count: 1 } で1枚、{ all: true } で残りを全部
+  routes.post("/:id/game/flips", requireIdentity(), async (c) => {
+    const body = await parseJson(c, flipSchema);
+    const count = "all" in body ? "all" : body.count;
+    return c.json({ game: await service.flip(c.req.param("id"), c.var.identity!, count) });
   });
 
   return routes;

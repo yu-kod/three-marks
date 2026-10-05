@@ -220,7 +220,45 @@ describe("ゲーム", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.game.throws).toHaveLength(1);
+    expect(res.body.game.pending?.aims).toHaveLength(3);
+    expect(res.body.game.throws).toHaveLength(0);
+  });
+
+  it("POST /:id/game/flips で1枚ずつ、または残りを全部めくる", async () => {
+    const { client, alice, roomId } = await twoPlayers();
+    const started = await client.request("POST", `/api/rooms/${roomId}/game`, {
+      token: alice.token,
+    });
+    const aims = started.body.game.myHand!.slice(0, 3).map((c) => c.id);
+    await client.request("POST", `/api/rooms/${roomId}/game/throws`, {
+      token: alice.token,
+      body: { aims },
+    });
+
+    const one = await client.request("POST", `/api/rooms/${roomId}/game/flips`, {
+      token: alice.token,
+      body: { count: 1 },
+    });
+    const rest = await client.request("POST", `/api/rooms/${roomId}/game/flips`, {
+      token: alice.token,
+      body: { all: true },
+    });
+
+    expect(one.status).toBe(200);
+    expect(one.body.game.pending?.flips).toHaveLength(1);
+    expect(rest.body.game.pending).toBeNull();
+    expect(rest.body.game.throws).toHaveLength(1);
+  });
+
+  it("POST /:id/game/flips の形がおかしければ 400", async () => {
+    const { client, alice, roomId } = await twoPlayers();
+
+    const zero = await client.request("POST", `/api/rooms/${roomId}/game/flips`, {
+      token: alice.token,
+      body: { count: 0 },
+    });
+
+    expect(zero.status).toBe(400);
   });
 
   it("手番でない人の投げは 422（GAME_RULE）、形がおかしければ 400", async () => {
@@ -245,6 +283,7 @@ describe("ゲーム", () => {
   it.each([
     ["POST", "game"],
     ["POST", "game/throws"],
+    ["POST", "game/flips"],
   ])("%s /:id/%s はゲストでなければ 401", async (method, path) => {
     const { client, roomId } = await twoPlayers();
 

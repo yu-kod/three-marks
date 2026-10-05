@@ -21,6 +21,7 @@ function view(overrides: Partial<GameView>): GameView {
     deckCount: 21,
     myHand: cards(20, 19, 18, 17, 16),
     throws: [],
+    pending: null,
     lastRoundThrows: [],
     phase: "throwing",
     winners: null,

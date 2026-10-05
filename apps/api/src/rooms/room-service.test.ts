@@ -11,6 +11,12 @@ import { createInMemoryRoomStore } from "./room-store.js";
 
 const guest = (id: string, name: string) => ({ kind: "guest" as const, id, name });
 const alice = guest("g-1", "Alice");
+
+/** 狙いを出して、残りを一気にめくる */
+async function throwAll(service: RoomService, who: { id: string }, aims: number[]) {
+  await service.declareAims("room-1", who as typeof alice, aims);
+  return service.flip("room-1", who as typeof alice, "all");
+}
 const bob = guest("g-2", "Bob");
 
 function setup(overrides: Partial<RoomServiceDeps> = {}) {
@@ -476,7 +482,7 @@ describe("ゲームが始まったあとのルーム", () => {
   });
 });
 
-describe("throwCards", () => {
+describe("投げる（狙いを出して全部めくる）", () => {
   async function started() {
     const ctx = setup({ createRng: () => seeded(1) });
     await ctx.service.createRoom(alice);
@@ -492,7 +498,7 @@ describe("throwCards", () => {
   it("手番の人が手札から3枚出すと、投げた結果が記録され、次の人の手番になる", async () => {
     const { service } = await started();
 
-    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+    const view = await throwAll(service, alice, await firstThree(service, alice));
 
     expect(view.throws).toHaveLength(1);
     expect(view.throws[0]!.player).toBe("g-1");
@@ -503,7 +509,7 @@ describe("throwCards", () => {
   it("ルール上できない投げ（手番でない等）は UnprocessableError（GAME_RULE）で、状態は変わらない", async () => {
     const { service } = await started();
 
-    const result = service.throwCards("room-1", bob, await firstThree(service, bob));
+    const result = service.declareAims("room-1", bob, await firstThree(service, bob));
 
     await expect(result).rejects.toBeInstanceOf(UnprocessableError);
     await expect(result).rejects.toMatchObject({ code: "GAME_RULE" });
@@ -514,7 +520,7 @@ describe("throwCards", () => {
     const { service } = setup();
     await service.createRoom(alice);
 
-    await expect(service.throwCards("room-1", alice, [1, 2, 3])).rejects.toMatchObject({
+    await expect(service.declareAims("room-1", alice, [1, 2, 3])).rejects.toMatchObject({
       code: "GAME_NOT_STARTED",
     });
   });
@@ -527,7 +533,7 @@ describe("throwCards", () => {
       const view = await service.getGame("room-1", alice);
       if (view.phase === "finished") break;
       const who = players[view.currentThrower as keyof typeof players];
-      await service.throwCards("room-1", who, await firstThree(service, who));
+      await throwAll(service, who, await firstThree(service, who));
     }
 
     await expect(service.getRoom("room-1")).resolves.toMatchObject({ status: "finished" });
@@ -551,7 +557,7 @@ describe("ルームの更新の通知", () => {
     expect(roomChanged).toHaveBeenCalledWith("room-1");
   });
 
-  it("ゲームが進んだときも知らせる", async () => {
+  it("ゲームが進んだとき（狙いを出しただけでも）知らせる", async () => {
     const { service, roomChanged } = withNotifier();
     await service.createRoom(alice);
     await service.join("room-1", bob);
@@ -559,7 +565,7 @@ describe("ルームの更新の通知", () => {
     roomChanged.mockClear();
     const hand = (await service.getGame("room-1", alice)).myHand!.slice(0, 3).map((c) => c.id);
 
-    await service.throwCards("room-1", alice, hand);
+    await service.declareAims("room-1", alice, hand);
 
     expect(roomChanged).toHaveBeenCalledTimes(1);
   });
@@ -592,7 +598,7 @@ describe("CPU の手番", () => {
   it("人が投げたあと、次が CPU なら人の手番まで続けて進める", async () => {
     const { service } = await started([alice]);
 
-    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+    const view = await throwAll(service, alice, await firstThree(service, alice));
 
     // 1ラウンド目: Alice → CPU 1〜3。2ラウンド目は CPU 1 から始まり、CPU 1〜3 → Alice の手番
     expect(view.currentThrower).toBe("g-1");
@@ -604,7 +610,7 @@ describe("CPU の手番", () => {
   it("次が人なら CPU は投げない", async () => {
     const { service } = await started([alice, bob]);
 
-    const view = await service.throwCards("room-1", alice, await firstThree(service, alice));
+    const view = await throwAll(service, alice, await firstThree(service, alice));
 
     expect(view.currentThrower).toBe("g-2");
     expect(view.throws).toHaveLength(1);
@@ -616,9 +622,86 @@ describe("CPU の手番", () => {
     for (let i = 0; i < 200; i++) {
       const view = await service.getGame("room-1", alice);
       if (view.phase === "finished") break;
-      await service.throwCards("room-1", alice, await firstThree(service, alice));
+      await throwAll(service, alice, await firstThree(service, alice));
     }
 
     await expect(service.getRoom("room-1")).resolves.toMatchObject({ status: "finished" });
+  });
+});
+
+describe("めくる（#30）", () => {
+  async function declared() {
+    const ctx = setup({ createRng: () => seeded(2) });
+    await ctx.service.createRoom(alice);
+    await ctx.service.join("room-1", bob);
+    await ctx.service.startGame("room-1", alice);
+    const aims = (await ctx.service.getGame("room-1", alice)).myHand!.slice(0, 3).map((c) => c.id);
+    await ctx.service.declareAims("room-1", alice, aims);
+    return ctx;
+  }
+
+  it("狙いを出すと、まだめくらずに全員に狙いが見える。手番は変わらない", async () => {
+    const { service } = await declared();
+
+    const bobs = await service.getGame("room-1", bob);
+
+    expect(bobs.pending).toMatchObject({ player: "g-1", flips: [] });
+    expect(bobs.pending!.aims).toHaveLength(3);
+    expect(bobs.currentThrower).toBe("g-1");
+    expect(bobs.throws).toEqual([]);
+  });
+
+  it("1枚ずつめくると、めくった札が全員に1枚ずつ見える", async () => {
+    const { service } = await declared();
+
+    await service.flip("room-1", alice, 1);
+    await service.flip("room-1", alice, 1);
+
+    await expect(service.getGame("room-1", bob)).resolves.toMatchObject({
+      pending: { flips: { length: 2 } },
+    });
+  });
+
+  it("めくる枚数が揃うと照合して次の人へ。残りを一気にめくってもよい", async () => {
+    const { service } = await declared();
+
+    await service.flip("room-1", alice, 1);
+    const view = await service.flip("room-1", alice, "all");
+
+    expect(view.pending).toBeNull();
+    expect(view.throws).toHaveLength(1);
+    expect(view.throws[0]!.flips).toHaveLength(5);
+    expect(view.currentThrower).toBe("g-2");
+  });
+
+  it("めくれるのは狙いを出した人だけ（GAME_RULE）", async () => {
+    const { service } = await declared();
+
+    await expect(service.flip("room-1", bob, 1)).rejects.toMatchObject({ code: "GAME_RULE" });
+  });
+
+  it("1枚めくるたびに更新を知らせる（他の人の画面でも1枚ずつ開く）", async () => {
+    const roomChanged = vi.fn(async () => {});
+    const { service } = setup({ createRng: () => seeded(2), notifier: { roomChanged } });
+    await service.createRoom(alice);
+    await service.join("room-1", bob);
+    await service.startGame("room-1", alice);
+    const aims = (await service.getGame("room-1", alice)).myHand!.slice(0, 3).map((c) => c.id);
+    await service.declareAims("room-1", alice, aims);
+    roomChanged.mockClear();
+
+    await service.flip("room-1", alice, 1);
+    await service.flip("room-1", alice, 1);
+
+    expect(roomChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it("始まる前はめくれない", async () => {
+    const { service } = setup();
+    await service.createRoom(alice);
+
+    await expect(service.flip("room-1", alice, 1)).rejects.toMatchObject({
+      code: "GAME_NOT_STARTED",
+    });
   });
 });
