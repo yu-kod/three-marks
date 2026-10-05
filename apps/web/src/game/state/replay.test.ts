@@ -149,4 +149,16 @@ describe("replayFrames", () => {
     expect(frames.map((f) => f.kind)).toEqual(["flip", "settle"]);
     expect(frames.at(-1)!.view).toEqual(finished);
   });
+
+  it("照合のコマでは誰の手番でもない（自分の投げの照合で、狙いを選ぶ操作が出ないように）", () => {
+    const state = start();
+    const afterA = throwBy(state, "a");
+    const afterB = throwBy(afterA, "b");
+
+    const frames = replayFrames(viewFor(state, "a"), viewFor(afterB, "a"));
+    const settleA = frames.find((f) => f.kind === "settle")!;
+
+    expect(settleA.view.currentThrower).toBeNull();
+    expect(settleA.view.pending).toBeNull();
+  });
 });
