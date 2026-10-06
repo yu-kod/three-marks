@@ -28,6 +28,8 @@ export type ThrowRecord = {
   result: ThrowResult;
   /** 演出のきっかけ（#31）。格の高い順 */
   awards: Award[];
+  /** 手番の人がいなくなって、サーバーが代わりに進めた投げ（解釈メモ17） */
+  auto?: true;
 };
 
 /**
@@ -39,6 +41,8 @@ export type PendingThrow = {
   aims: Card[];
   /** めくった順 */
   flips: Card[];
+  /** サーバーが代わりに進めている（解釈メモ17） */
+  auto?: true;
 };
 
 /**
@@ -244,7 +248,7 @@ export function revealFlips(
 
 /** めくり終わった投げを照合してマークを付け、全員が投げ終わっていればラウンドを終える */
 function settle(state: GameState, rng: Rng): GameState {
-  const { player, aims, flips } = state.pending!;
+  const { player, aims, flips, auto } = state.pending!;
   const result = resolveThrow({
     aims: aims.map((c) => c.target),
     flips: flips.map((c) => c.target),
@@ -259,7 +263,14 @@ function settle(state: GameState, rng: Rng): GameState {
     marks: { ...state.marks, [player]: addMarks(state.marks[player]!, gained) },
     throws: [
       ...state.throws,
-      { player, aims, flips, result, awards: awardsFor(result, state.marks[player]!) },
+      {
+        player,
+        aims,
+        flips,
+        result,
+        awards: awardsFor(result, state.marks[player]!),
+        ...(auto ? { auto } : {}),
+      },
     ],
   };
 

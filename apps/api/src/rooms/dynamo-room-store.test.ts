@@ -60,9 +60,18 @@ describe("createDynamoRoomStore", () => {
   it("find はキーで Get して RoomRecord に戻す", async () => {
     const { store, sent } = setup(vi.fn().mockResolvedValue({ Item: item }));
 
-    await expect(store.find("room-1")).resolves.toEqual(room);
+    await expect(store.find("room-1")).resolves.toEqual({ ...room, turn: null });
     expect(sent()).toBeInstanceOf(GetCommand);
     expect(sent().input).toEqual({ TableName: "app", Key: { PK: "ROOM#room-1", SK: "ROOM" } });
+  });
+
+  it("find は手番の時刻（タイムアウト用）も戻す。前からある項目には無いので null", async () => {
+    const turn = { key: "1:g-1", startedAt: 5_000 };
+    const withTurn = setup(vi.fn().mockResolvedValue({ Item: { ...item, turn } })).store;
+    const without = setup(vi.fn().mockResolvedValue({ Item: item })).store;
+
+    await expect(withTurn.find("room-1")).resolves.toMatchObject({ turn });
+    await expect(without.find("room-1")).resolves.toMatchObject({ turn: null });
   });
 
   it("find で項目が無ければ null", async () => {

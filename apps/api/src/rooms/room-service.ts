@@ -10,6 +10,7 @@ import {
   revealFlips as revealInGame,
   throwCards as throwInGame,
   createRng as seededRng,
+  playForAbsent,
   drawSeats as drawSeatOrder,
   MAX_PLAYERS,
   rulesFor,
@@ -22,6 +23,12 @@ import {
 import { silentNotifier, type RoomNotifier } from "../realtime/notifier.js";
 import { withGameRules } from "./game-errors.js";
 import type { RoomMember, RoomRecord, RoomStore } from "./room-store.js";
+
+/** 手番が回ってきてから、サーバーが代わりに進めるまでの時間（解釈メモ17） */
+export const TURN_TIMEOUT_MS = 60_000;
+
+/** ゲームの状態に、今の手番が終わるまでの残り時間（ミリ秒）を添えたもの。手番が無ければ null */
+export type TimedGameView = GameView & { turnEndsIn: number | null };
 
 /** ルームの有効期間。集まって遊び終わるまでに十分な長さ */
 export const ROOM_TTL_SECONDS = 24 * 60 * 60;
@@ -95,6 +102,10 @@ function playCpuTurns(game: GameState, members: RoomMember[], rng: Rng): GameSta
   return state;
 }
 
+/** 今の手番を表す鍵（ラウンドと投げる人）。投げている最中でなければ null */
+const turnKey = (game: GameState) =>
+  game.phase === "throwing" ? `${game.round}:${currentThrower(game)}` : null;
+
 /** 席に関わる変更（参加・退出・席順）はゲームを始める前だけ */
 function assertWaiting(room: RoomRecord) {
   if (room.game !== null) {
@@ -153,6 +164,21 @@ export function createRoomService({
       }
     }
   }
+
+  /** ゲームを書き換える。手番が変わったら、回ってきた時刻を覚え直す */
+  function withGame(room: RoomRecord, game: GameState): RoomRecord {
+    const key = turnKey(game);
+    const turn =
+      key === null ? null : room.turn?.key === key ? room.turn : { key, startedAt: now() };
+    return { ...room, game, turn };
+  }
+
+  /** 手番が回ってきてから時間を過ぎているか（CPU の手番では待たないので人の手番だけ） */
+  const timedOut = (room: RoomRecord) =>
+    room.game !== null &&
+    room.turn != null &&
+    room.turn.key === turnKey(room.game) &&
+    now() - room.turn.startedAt >= TURN_TIMEOUT_MS;
 
   /** updateRecord して、クライアントへ返すルームにする */
   const update = async (roomId: string, change: (room: RoomRecord) => RoomRecord | null) =>
@@ -269,7 +295,7 @@ export function createRoomService({
           members.map((m) => m.guestId),
           rng
         );
-        return { ...room, members, game: playCpuTurns(game, members, rng) };
+        return withGame({ ...room, members }, playCpuTurns(game, members, rng));
       }),
 
     /**
@@ -279,7 +305,10 @@ export function createRoomService({
     async declareAims(roomId: string, player: GuestIdentity, aimIds: number[]): Promise<GameView> {
       const room = await updateRecord(roomId, (room) => {
         const game = requireGame(room);
-        return { ...room, game: withGameRules(() => declareInGame(game, player.id, aimIds)) };
+        return withGame(
+          room,
+          withGameRules(() => declareInGame(game, player.id, aimIds))
+        );
       });
       return viewFor(room.game!, player.id);
     },
@@ -295,14 +324,30 @@ export function createRoomService({
         const rng = createRng();
         const n = count === "all" ? game.rules.flipCount : count;
         const flipped = withGameRules(() => revealInGame(game, player.id, n, rng));
-        return { ...room, game: playCpuTurns(flipped, room.members, rng) };
+        return withGame(room, playCpuTurns(flipped, room.members, rng));
       });
       return viewFor(room.game!, player.id);
     },
 
-    /** viewer に見せてよいゲームの状態。参加者でなければ観戦者として見る */
-    async getGame(roomId: string, viewer: GuestIdentity | null): Promise<GameView> {
-      return viewFor(requireGame(await findValid(roomId)), viewer?.id ?? null);
+    /**
+     * viewer に見せてよいゲームの状態と、今の手番の残り時間。参加者でなければ観戦者として見る。
+     * 手番の人が時間を過ぎても投げ終えていなければ、ここでサーバーが代わりに進める（解釈メモ17）
+     */
+    async getGame(roomId: string, viewer: GuestIdentity | null): Promise<TimedGameView> {
+      let room = await findValid(roomId);
+      if (timedOut(room)) {
+        room = await updateRecord(roomId, (room) => {
+          if (!timedOut(room)) return null;
+          const rng = createRng();
+          return withGame(room, playCpuTurns(playForAbsent(room.game!, rng), room.members, rng));
+        });
+      }
+      const game = requireGame(room);
+      const turnEndsIn =
+        room.turn != null && room.turn.key === turnKey(game)
+          ? Math.max(0, room.turn.startedAt + TURN_TIMEOUT_MS - now())
+          : null;
+      return { ...viewFor(game, viewer?.id ?? null), turnEndsIn };
     },
   };
 }

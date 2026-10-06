@@ -12,8 +12,12 @@ export type TableState =
 /** ストアが使う API（テストで差し替える） */
 export type TableApi = {
   getRoom(roomId: string): Promise<RoomView>;
-  getGame(roomId: string): Promise<GameView>;
+  /** turnEndsIn は今の手番の残り時間（ミリ秒）。手番が無ければ null */
+  getGame(roomId: string): Promise<GameView & { turnEndsIn?: number | null }>;
 };
+
+/** 手番の残り時間が来てから、サーバーが代わりに進めた結果を読みに行くまでの余裕 */
+const TURN_CHECK_MARGIN_MS = 500;
 
 /** subscribeRoomUpdates と同じ形（url などは呼ぶ側で埋める） */
 export type SubscribeUpdates = (options: { roomId: string; onChange: () => void }) => () => void;
@@ -36,18 +40,30 @@ export function createTableStore({ roomId, api, subscribe }: TableStoreOptions) 
   /** 取り直しの通し番号。最後に始めた取り直しの応答だけを反映する（止めるときも進めて、途中の応答を捨てる） */
   let latest = 0;
 
-  async function load(): Promise<TableState> {
+  /** 手番の残り時間が来たら取り直す（いなくなった人の手番は、誰かが読みに行ったときにサーバーが進める） */
+  let turnCheck: ReturnType<typeof setTimeout> | null = null;
+  function scheduleTurnCheck(turnEndsIn: number | null | undefined) {
+    if (turnCheck !== null) clearTimeout(turnCheck);
+    turnCheck = turnEndsIn == null ? null : setTimeout(refresh, turnEndsIn + TURN_CHECK_MARGIN_MS);
+  }
+
+  async function load(): Promise<{ next: TableState; turnEndsIn: number | null }> {
     const room = await api.getRoom(roomId);
-    const game = room.status === "waiting" ? null : await api.getGame(roomId);
-    return { status: "ready", room, game };
+    if (room.status === "waiting") {
+      return { next: { status: "ready", room, game: null }, turnEndsIn: null };
+    }
+    const { turnEndsIn = null, ...game } = await api.getGame(roomId);
+    return { next: { status: "ready", room, game }, turnEndsIn };
   }
 
   function refresh() {
     const request = ++latest;
     const isCurrent = () => request === latest;
     load().then(
-      (next) => {
-        if (isCurrent()) set(next);
+      ({ next, turnEndsIn }) => {
+        if (!isCurrent()) return;
+        scheduleTurnCheck(turnEndsIn);
+        set(next);
       },
       (error: unknown) => {
         // 一度取れたあとの失敗は、前の状態のまま次の知らせ（またはポーリング）で取り直す
@@ -78,6 +94,7 @@ export function createTableStore({ roomId, api, subscribe }: TableStoreOptions) 
       const unsubscribe = subscribe({ roomId, onChange: refresh });
       return () => {
         latest++;
+        scheduleTurnCheck(null);
         unsubscribe();
       };
     },

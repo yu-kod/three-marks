@@ -31,6 +31,7 @@ import {
 } from "@/game/state/lobby";
 import { shouldPlayReveal, type SeatDrawRound } from "@/game/state/seat-draw";
 import { replayFrames, type ReplayFrame } from "@/game/state/replay";
+import { autoNotice } from "@/game/state/auto-notice";
 import { cutInFor } from "@/game/state/cut-in";
 import { settleFeedback } from "@/game/state/feedback";
 import { hitPairs } from "@/game/state/hit-pairs";
@@ -182,6 +183,9 @@ export class RoomScene extends BaseScene {
       // 照合した投げにアワードがあれば、カットインを出し終えてから次へ
       if (frame.record) {
         const who = state.room.members.find((m) => m.id === frame.record!.player)?.name ?? "";
+        // サーバーが代わりに進めた投げなら、全員に分かるように一言出す（解釈メモ17）
+        const notice = autoNotice(frame.record, who, frame.record.player === this.me());
+        if (notice) showToast(this, this.skin, notice);
         const cut = cutInFor(frame.record.awards, who, frame.record.player === this.me());
         const style = cut && cutInStyle(this.effects, cut, cut.kind === this.lastCutIn);
         if (cut && style) {
