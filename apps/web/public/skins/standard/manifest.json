@@ -16,7 +16,12 @@
   "card": {
     "width": 44,
     "height": 112,
-    "radius": 4
+    "radius": 2.2,
+    "glyph": {
+      "width": 1,
+      "height": 1,
+      "y": 0
+    }
   },
   "motion": {
     "tapMs": 90,
