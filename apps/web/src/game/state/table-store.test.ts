@@ -208,4 +208,52 @@ describe("createTableStore", () => {
 
     expect(store.getState()).toMatchObject({ room: { hostId: "next" } });
   });
+
+  it("手番の残り時間が来たら取り直す（いなくなった人の手番をサーバーが進めるのを拾う）。残り時間は状態に入れない", async () => {
+    vi.useFakeTimers();
+    try {
+      const getGame = vi.fn(async () => ({ ...buildGameView(), turnEndsIn: 3_000 }));
+      const api = fakeApi({
+        getRoom: vi.fn(async () => buildRoom({ status: "playing" })),
+        getGame,
+      });
+      const store = createTableStore({ roomId: "r1", api, subscribe: fakeUpdates().subscribe });
+
+      const stop = store.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.getState()).toMatchObject({ game: buildGameView() });
+      expect(store.getState()).not.toHaveProperty("game.turnEndsIn");
+      expect(getGame).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(getGame).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(600);
+      expect(getGame).toHaveBeenCalledTimes(2);
+
+      stop();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(getGame).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("残り時間が無ければ（ゲームの終わりなど）取り直しを仕掛けない", async () => {
+    vi.useFakeTimers();
+    try {
+      const getGame = vi.fn(async () => ({ ...buildGameView(), turnEndsIn: null }));
+      const api = fakeApi({
+        getRoom: vi.fn(async () => buildRoom({ status: "playing" })),
+        getGame,
+      });
+      const store = createTableStore({ roomId: "r1", api, subscribe: fakeUpdates().subscribe });
+
+      store.start();
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      expect(getGame).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

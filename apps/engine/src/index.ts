@@ -1,3 +1,4 @@
+export { playForAbsent } from "./absent.js";
 export { awardsFor, type Award } from "./awards.js";
 export { TARGETS, strength, type Target } from "./targets.js";
 export { resolveThrow, type ThrowInput, type ThrowResult } from "./throw.js";

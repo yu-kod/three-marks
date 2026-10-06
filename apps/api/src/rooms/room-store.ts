@@ -25,6 +25,11 @@ export type RoomRecord = {
    * クライアントへはそのまま返さず、必ず viewFor を通す（CLAUDE.md「裏向き情報を漏らさない」）
    */
   game: GameState | null;
+  /**
+   * 今の手番と、それが回ってきた時刻（ミリ秒）。手番のタイムアウト（解釈メモ17）に使う。
+   * key はラウンドと投げる人。ゲームの前・終わったあとは null（前からあるルームは無い）
+   */
+  turn?: { key: string; startedAt: number } | null;
   /** UNIX 秒 */
   createdAt: number;
   /** UNIX 秒。過ぎたら無効（DynamoDB の TTL もこの属性で消す） */

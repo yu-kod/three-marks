@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createRoomService,
   ROOM_TTL_SECONDS,
+  TURN_TIMEOUT_MS,
   type RoomService,
   type RoomServiceDeps,
 } from "./room-service.js";
@@ -702,6 +703,113 @@ describe("めくる（#30）", () => {
 
     await expect(service.flip("room-1", alice, 1)).rejects.toMatchObject({
       code: "GAME_NOT_STARTED",
+    });
+  });
+});
+
+describe("手番のタイムアウト（解釈メモ17）", () => {
+  async function started(humans: (typeof alice)[] = [alice, bob], overrides = {}) {
+    const ctx = setup({ createRng: () => seeded(3), ...overrides });
+    await ctx.service.createRoom(humans[0]!);
+    for (const h of humans.slice(1)) await ctx.service.join("room-1", h);
+    await ctx.service.startGame("room-1", humans[0]!);
+    return ctx;
+  }
+  const firstThree = async (service: RoomService, who: typeof alice) =>
+    (await service.getGame("room-1", who)).myHand!.slice(0, 3).map((c) => c.id);
+
+  it("時間内なら進めない。残り時間を返す", async () => {
+    const { service, advance } = await started();
+    advance(TURN_TIMEOUT_MS - 1);
+
+    const view = await service.getGame("room-1", bob);
+
+    expect(view.currentThrower).toBe("g-1");
+    expect(view.throws).toEqual([]);
+    expect(view.turnEndsIn).toBe(1);
+  });
+
+  it("時間を過ぎたら、読みに来たときにサーバーが代わりに投げ、印を付けて知らせる", async () => {
+    const roomChanged = vi.fn(async () => {});
+    const { service, advance } = await started([alice, bob], { notifier: { roomChanged } });
+    roomChanged.mockClear();
+    advance(TURN_TIMEOUT_MS);
+
+    const view = await service.getGame("room-1", bob);
+
+    expect(view.throws).toHaveLength(1);
+    expect(view.throws[0]).toMatchObject({ player: "g-1", auto: true });
+    expect(view.currentThrower).toBe("g-2");
+    expect(view.turnEndsIn).toBe(TURN_TIMEOUT_MS);
+    expect(roomChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("同時に読みに来ても、代わりに投げるのは1回だけ", async () => {
+    const { service, advance } = await started();
+    advance(TURN_TIMEOUT_MS);
+
+    await Promise.all([service.getGame("room-1", alice), service.getGame("room-1", bob)]);
+
+    const view = await service.getGame("room-1", bob);
+    expect(view.throws).toHaveLength(1);
+    expect(view.currentThrower).toBe("g-2");
+  });
+
+  it("めくっている途中なら、狙いはそのままで残りを全部めくる", async () => {
+    const { service, advance } = await started();
+    await service.declareAims("room-1", alice, await firstThree(service, alice));
+    await service.flip("room-1", alice, 2);
+    advance(TURN_TIMEOUT_MS);
+
+    const view = await service.getGame("room-1", bob);
+
+    expect(view.throws[0]).toMatchObject({ player: "g-1", auto: true, flips: { length: 5 } });
+  });
+
+  it("時間は手番が回ってきたときから数え、途中の操作では延ばさない", async () => {
+    const { service, advance } = await started();
+    advance(TURN_TIMEOUT_MS - 10);
+    await service.declareAims("room-1", alice, await firstThree(service, alice));
+    advance(10);
+
+    await expect(service.getGame("room-1", bob)).resolves.toMatchObject({
+      throws: [{ player: "g-1", auto: true }],
+    });
+  });
+
+  it("次の人の時間は、手番が回ってきたときから数え直す", async () => {
+    const { service, advance } = await started();
+    advance(30_000);
+    await throwAll(service, alice, await firstThree(service, alice));
+    advance(TURN_TIMEOUT_MS - 1);
+
+    const view = await service.getGame("room-1", alice);
+
+    expect(view.currentThrower).toBe("g-2");
+    expect(view.throws).toHaveLength(1);
+  });
+
+  it("代わりに投げたあと、次が CPU なら人の手番まで進める", async () => {
+    const { service, advance } = await started([alice]);
+    advance(TURN_TIMEOUT_MS);
+
+    const view = await service.getGame("room-1", alice);
+
+    expect(view.round).toBe(2);
+    expect(view.lastRoundThrows[0]).toMatchObject({ player: "g-1", auto: true });
+    expect(view.currentThrower).toBe("g-1");
+  });
+
+  it("ゲームが終わっていれば残り時間は無い", async () => {
+    const { service, advance } = await started([alice]);
+    for (let i = 0; i < 200; i++) {
+      if ((await service.getGame("room-1", alice)).phase === "finished") break;
+      advance(TURN_TIMEOUT_MS);
+    }
+
+    await expect(service.getGame("room-1", alice)).resolves.toMatchObject({
+      phase: "finished",
+      turnEndsIn: null,
     });
   });
 });
