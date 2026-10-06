@@ -125,6 +125,10 @@ const manifestSchema = z.object({
     width: z.number().positive(),
     height: z.number().positive(),
     radius: z.number().nonnegative(),
+    /** 数字・ブルの絵を置く枠（カードに対する割合、y は真ん中からのずれ）。無ければ真ん中に置く */
+    glyph: z
+      .object({ width: z.number().positive(), height: z.number().positive(), y: z.number() })
+      .optional(),
   }),
   /** 動きの時間（ミリ秒） */
   motion: z.object({

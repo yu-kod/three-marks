@@ -1,6 +1,7 @@
 import type * as Phaser from "phaser";
 import type { Skin, SlotKey } from "@/game/skin/skin";
 import type { CardFace } from "@/game/state/card-face";
+import { glyphBox } from "@/game/skin/card-layout";
 import { placeVisual } from "./visual";
 
 /**
@@ -13,7 +14,11 @@ export function drawCard(
   { x, y, face }: { x: number; y: number; face: CardFace }
 ): Phaser.GameObjects.Container {
   const { width, height, radius } = skin.card;
-  const place = (key: SlotKey, box: { width: number; height: number }, stretch = false) =>
+  const place = (
+    key: SlotKey,
+    box: { width: number; height: number; y?: number },
+    stretch = false
+  ) =>
     placeVisual(
       scene,
       key,
@@ -28,9 +33,9 @@ export function drawCard(
   const ground = face.kind === "back" ? "card.back" : "card.face";
   const parts = [place(ground, { width, height }, true)];
   if (face.kind === "number") {
-    parts.push(place(`glyph.${face.value}`, { width: width * 0.86, height: height * 0.4 }));
+    parts.push(place(`glyph.${face.value}`, glyphBox(skin.card, "number")));
   } else if (face.kind === "bull") {
-    parts.push(place("glyph.bull", { width: width * 0.8, height: width * 0.8 }));
+    parts.push(place("glyph.bull", glyphBox(skin.card, "bull")));
   }
   return scene.add.container(x, y, parts);
 }
