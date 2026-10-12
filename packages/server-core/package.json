@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1146.0",
-    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "@aws-sdk/lib-dynamodb": "^3.1148.0",
     "hono": "^4.13.13",
     "zod": "^4.6.5"
   }
